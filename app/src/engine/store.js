@@ -54,6 +54,35 @@ export class EngineStore {
       originProfileId: null, originDisplayName: null };
   }
 
+  // 單遍匯入用（app-import-engine「單遍匯入與重複檔終點判定」）：內容指紋
+  // 要到解析終點才算得出來，先以佔位值建來源列取得 docId。佔位值只活在
+  // 交易內：終點由 resolveSource 更新為真值，或隨交易整筆回滾，MUST NOT
+  // 被提交。sha256 有 UNIQUE 約束且單連線無並發，佔位不撞鍵。
+  async registerPending(profileId, filename, adapter, adapterVersion,
+    containerSha256) {
+    const r = await this.driver.execute(
+      "INSERT INTO source_documents(profile_id,filename,sha256,adapter,"
+      + "adapter_version,container_sha256) VALUES(?,?,?,?,?,?)",
+      [profileId, filename, "pending", adapter, adapterVersion, containerSha256]);
+    return r.lastInsertRowid;
+  }
+
+  // 交易終點的重複判定＋真值回填。命中回原歸屬（跨成員重複檔訊息用），
+  // 未命中才 UPDATE（sha256 UNIQUE 是最後防線：先查再更新，不靠撞鍵）。
+  async resolveSource(docId, sha256) {
+    const rows = await this.driver.select(
+      "SELECT d.imported_at, p.display_name"
+      + " FROM source_documents d JOIN profiles p ON d.profile_id = p.id"
+      + " WHERE d.sha256=? AND d.id != ?", [sha256, docId]);
+    if (rows.length) {
+      return { duplicate: true, importedAt: rows[0].imported_at,
+        originDisplayName: rows[0].display_name };
+    }
+    await this.driver.execute(
+      "UPDATE source_documents SET sha256=? WHERE id=?", [sha256, docId]);
+    return { duplicate: false };
+  }
+
   async finalizeImport(docId) {
     await this.driver.execute(
       "UPDATE source_documents SET import_stats=? WHERE id=?",
