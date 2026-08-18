@@ -37,6 +37,10 @@ export async function findZipXmlMember(source) {
   while (p + 46 <= cdSize && cdv.getUint32(p, true) === 0x02014b50) {
     const method = cdv.getUint16(p + 10, true);
     const compSize = cdv.getUint32(p + 20, true);
+    // +24 是 central directory 的未壓縮大小；0xFFFFFFFF 是 zip64 的溢位標記
+    // （真值在 extra field，本層不解）。zip64 或欄位為 0 一律以 0 表示「不可得」，
+    // 呼叫端據此不顯示百分比：進度寧可不顯示，也不顯示假的
+    const rawUncomp = cdv.getUint32(p + 24, true);
     const nameLen = cdv.getUint16(p + 28, true);
     const extraLen = cdv.getUint16(p + 30, true);
     const cmtLen = cdv.getUint16(p + 32, true);
@@ -45,7 +49,10 @@ export async function findZipXmlMember(source) {
       .decode(cd.subarray(p + 46, p + 46 + nameLen));
     const lower = name.toLowerCase();
     if (lower.endsWith(".xml") && !lower.includes("cda")) {
-      return { name, method, compSize, localHeaderOffset: lho };
+      return {
+        name, method, compSize, localHeaderOffset: lho,
+        uncompSize: rawUncomp === 0xFFFFFFFF ? 0 : rawUncomp,
+      };
     }
     p += 46 + nameLen + extraLen + cmtLen;
   }

@@ -111,13 +111,18 @@ export const appleHealthAdapter = {
     const header = await source.readAt(0, Math.min(65536, source.size));
     let displayName = source.name;
     let makeStream;
+    // 進度總量＝解析內容的未壓縮總量；0＝不可得，GUI 不顯示百分比
+    // （app-import-engine「匯入進度回報」）
+    let totalBytes;
     if (isZip(header)) {
       const member = await findZipXmlMember(source);
       if (!member) throw new Error("zip 內找不到 Apple Health XML 成員");
       displayName = `${source.name}:${member.name}`;
       makeStream = () => zipMemberStream(source, member);
+      totalBytes = member.uncompSize;
     } else if (looksLikeHealthData(header)) {
       makeStream = () => source.stream();
+      totalBytes = source.size;
     } else {
       throw new Error("非 Apple Health 匯出檔");
     }
@@ -130,7 +135,7 @@ export const appleHealthAdapter = {
     for await (const chunk of await makeStream()) {
       hasher.update(chunk);
       hashedBytes += chunk.length;
-      progress?.(0, source.size, hashedBytes);
+      progress?.(0, totalBytes, hashedBytes);
     }
     const sha256 = hasher.hex();
 
@@ -220,13 +225,15 @@ export const appleHealthAdapter = {
         if (recordRows.length + workoutRows.length >= BATCH_FLUSH) {
           await flush();
           processed = scanned + workouts;
-          progress?.(processed, source.size, readBytes);
+          progress?.(processed, totalBytes, readBytes);
         }
       }
       carry += decoder.decode();
       scan(carry, sink);
       await flush();
-      progress?.(scanned + workouts, source.size, source.size);
+      // 收尾以 readBytes=totalBytes 表示完成（zip 時 source.size 是壓縮檔
+      // 大小，與未壓縮分母不同單位，用它會讓最終百分比失真）
+      progress?.(scanned + workouts, totalBytes, totalBytes);
 
       // 統計語意鏡像 Python（store.stats 由批次結果回填；0 時不建鍵，
       // 與 Python 逐筆計數的鍵存在性一致，import_stats 序列化才對得上）
