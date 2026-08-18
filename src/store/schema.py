@@ -1,6 +1,6 @@
 """health-database schema：全表 profile_id、來源追溯、quality_flags、版本化。"""
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # CPAP 三表（v4 新增）：同時作為初始 DDL 與 3→4 遷移的單一來源，兩處手寫
 # 會漂移。與 app/src/store/schema.js 的 CPAP_DDL 逐字同步（schema parity
@@ -88,7 +88,8 @@ CREATE TABLE IF NOT EXISTS source_documents(
     adapter TEXT NOT NULL,
     adapter_version TEXT NOT NULL,
     import_stats TEXT,
-    imported_at TEXT NOT NULL DEFAULT (datetime('now')));
+    imported_at TEXT NOT NULL DEFAULT (datetime('now')),
+    container_sha256 TEXT);
 
 CREATE TABLE IF NOT EXISTS encounters(
     id INTEGER PRIMARY KEY,
@@ -251,6 +252,8 @@ MIGRATIONS = {
     2: ["CREATE INDEX IF NOT EXISTS idx_medications_profile"
         " ON medications(profile_id, encounter_id)"],
     3: [s.strip() for s in CPAP_DDL.split(";") if s.strip()],
+    # v5：zip 容器指紋快篩欄位（App 端專用，Python CLI 不填；排除於差分對帳）
+    4: ["ALTER TABLE source_documents ADD COLUMN container_sha256 TEXT"],
 }
 
 # 帶指紋合併語意的健保紀錄表（碰撞防禦與 superseded 偵測作用對象）

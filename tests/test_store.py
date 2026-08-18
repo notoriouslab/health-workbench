@@ -136,8 +136,11 @@ def test_schema_migration_v1_to_v2(tmp_path):
     from src.store.schema import DDL, SCHEMA_VERSION
     db = tmp_path / "old.sqlite"
     con = sqlite3.connect(db)
-    con.executescript(DDL.replace(
-        "import_stats TEXT,\n    imported_at", "imported_at"))  # 模擬 v1 無該欄位
+    v1_ddl = DDL.replace(
+        "import_stats TEXT,\n    imported_at", "imported_at"  # 模擬 v1 無該欄位
+    ).replace(",\n    container_sha256 TEXT);", ");")  # v1 也沒有 v5 欄位
+    assert "container_sha256" not in v1_ddl  # DDL 改寫時此替換式要跟著改
+    con.executescript(v1_ddl)
     con.execute("INSERT INTO schema_version(version) VALUES (1)")
     con.commit(); con.close()
     s = Store(db)
@@ -161,10 +164,28 @@ def test_finalize_import_stats(ctx):
 
 
 def _downgrade_to_v3(store):
-    """把庫降回 v3 現場（移除 v4 產物與版本紀錄）。"""
+    """把庫降回 v3 現場（移除 v4 產物、v5 欄位與版本紀錄）。"""
     cur = store.con.cursor()
     for t in ["cpap_daily", "cpap_events", "cpap_oximetry"]:
         cur.execute(f"DROP TABLE {t}")
+    # v3 現場沒有 v5 的 container_sha256；建表搬資料拆掉（同 JS 端
+    # tests/helpers/schema_downgrade.mjs 的作法）
+    cur.execute("PRAGMA foreign_keys = OFF")
+    cur.execute("""CREATE TABLE sd_pre_v5(
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id),
+        filename TEXT NOT NULL,
+        sha256 TEXT NOT NULL UNIQUE,
+        adapter TEXT NOT NULL,
+        adapter_version TEXT NOT NULL,
+        import_stats TEXT,
+        imported_at TEXT NOT NULL DEFAULT (datetime('now')))""")
+    cur.execute("INSERT INTO sd_pre_v5 SELECT id, profile_id, filename, sha256,"
+                " adapter, adapter_version, import_stats, imported_at"
+                " FROM source_documents")
+    cur.execute("DROP TABLE source_documents")
+    cur.execute("ALTER TABLE sd_pre_v5 RENAME TO source_documents")
+    cur.execute("PRAGMA foreign_keys = ON")
     cur.execute("DELETE FROM schema_version")
     cur.execute("INSERT INTO schema_version(version) VALUES (3)")
     store.con.commit()

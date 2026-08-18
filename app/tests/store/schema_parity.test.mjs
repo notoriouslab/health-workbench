@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { NodeDriver } from "../../src/store/node_driver.js";
 import { initSchema, SCHEMA_VERSION, SchemaTooNew, NoMigrationPath } from "../../src/store/schema.js";
+import { dropContainerSha256 } from "../helpers/schema_downgrade.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -36,6 +37,8 @@ test("前向遷移：v2 庫開啟自動逐版升至最新（補索引與 CPAP �
   // 構造 v2 現場：移除 migration 2 與 3 的產物，版本紀錄清空後只留 2。
   // 版本紀錄 MUST 全清（DELETE 特定版本號會隨 SCHEMA_VERSION 演進而失效，
   // 導致 MAX(version) 仍是最新值、遷移根本不被觸發而測試假綠）
+  // v2 現場也沒有 v5 欄位（不拆的話 MIGRATIONS[4] 的 ALTER 會撞既有欄位）
+  await dropContainerSha256(d);
   await d.execute("DROP INDEX idx_medications_profile");
   for (const t of ["cpap_daily", "cpap_events", "cpap_oximetry"]) {
     await d.execute(`DROP TABLE ${t}`);

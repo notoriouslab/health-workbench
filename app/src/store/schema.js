@@ -2,7 +2,7 @@
 // 驗收＝兩邊空庫正規化 schema dump 全等（tests/store/schema_parity.test.mjs）。
 // 修改 DDL 時 MUST 同步修改 Python 版並重跑 parity 測試。
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 // CPAP 三表（v4 新增）：同時作為初始 DDL 與 3→4 遷移的單一來源，兩處
 // 手寫會漂移（migration 2 即為重複語句維護的前例）。欄位選取以兩台機器
@@ -91,7 +91,8 @@ CREATE TABLE IF NOT EXISTS source_documents(
     adapter TEXT NOT NULL,
     adapter_version TEXT NOT NULL,
     import_stats TEXT,
-    imported_at TEXT NOT NULL DEFAULT (datetime('now')));
+    imported_at TEXT NOT NULL DEFAULT (datetime('now')),
+    container_sha256 TEXT);
 
 CREATE TABLE IF NOT EXISTS encounters(
     id INTEGER PRIMARY KEY,
@@ -254,6 +255,9 @@ export const MIGRATIONS = {
   2: ["CREATE INDEX IF NOT EXISTS idx_medications_profile"
       + " ON medications(profile_id, encounter_id)"],
   3: splitStatements(CPAP_DDL),
+  // v5：zip 容器指紋快篩欄位（僅 zip 來源填值，非 zip 為 NULL；
+  // App 端快篩專用，排除於 Python 差分對帳）
+  4: ["ALTER TABLE source_documents ADD COLUMN container_sha256 TEXT"],
 };
 
 export class SchemaTooNew extends Error {}

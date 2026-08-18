@@ -8,11 +8,14 @@ import { initSchema, SCHEMA_VERSION, MIGRATIONS, NoMigrationPath }
   from "../../src/store/schema.js";
 import { readSchemaVersion, needsPreMigrationSnapshot, preMigrationSnapshotName }
   from "../../src/store/location.js";
+import { dropContainerSha256, stripContainerSha256 }
+  from "../helpers/schema_downgrade.mjs";
 
 const CPAP_TABLES = ["cpap_daily", "cpap_events", "cpap_oximetry"];
 
 // 把庫降回 v3 現場：移除 v4 產物與版本紀錄（版本紀錄全清，不依賴特定版本號）
 async function downgradeToV3(d) {
+  await dropContainerSha256(d); // v3 現場也沒有 v5 欄位
   for (const t of CPAP_TABLES) await d.execute(`DROP TABLE ${t}`);
   await d.execute("DELETE FROM schema_version");
   await d.execute("INSERT INTO schema_version(version) VALUES (3)");
@@ -52,7 +55,7 @@ async function dumpAll(d) {
   return JSON.stringify(out);
 }
 
-test("v3 升 v4：既有資料逐位元組不變、三表建立、版本為 4", async () => {
+test("v3 升至最新：既有資料逐位元組不變、三表建立、版本為最新", async () => {
   const d = new NodeDriver();
   await initSchema(d);
   await downgradeToV3(d);
@@ -61,7 +64,6 @@ test("v3 升 v4：既有資料逐位元組不變、三表建立、版本為 4", 
 
   const ver = await initSchema(d);
   assert.equal(ver, SCHEMA_VERSION);
-  assert.equal(ver, 4);
 
   const tables = (await d.select(
     "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'cpap_%'"
@@ -78,7 +80,7 @@ test("v3 升 v4：既有資料逐位元組不變、三表建立、版本為 4", 
     const [{ c }] = await d.select(`SELECT COUNT(*) c FROM ${t}`);
     assert.equal(c, 0);
   }
-  const afterExisting = JSON.parse(await dumpAll(d));
+  const afterExisting = JSON.parse(stripContainerSha256(await dumpAll(d)));
   for (const t of CPAP_TABLES) delete afterExisting[t];
   assert.equal(JSON.stringify(afterExisting), before);
 

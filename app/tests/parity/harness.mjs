@@ -104,7 +104,10 @@ export async function dumpDb(dbPath) {
   }));
   out.source_documents = canonicalize(
     (await d.select("SELECT * FROM source_documents")).map(r => {
-      const { id, imported_at, profile_id, import_stats, ...rest } = { ...r };
+      // container_sha256 為 App 端 zip 快篩專用（Python CLI 不填），
+      // 依 app-import-engine spec 排除於對帳欄位
+      const { id, imported_at, profile_id, import_stats, container_sha256,
+        ...rest } = { ...r };
       return { ...rest, profile: profKey.get(profile_id),
         import_stats: import_stats ? JSON.parse(import_stats) : null };
     }));
