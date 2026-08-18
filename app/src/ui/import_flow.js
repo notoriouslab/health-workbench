@@ -10,6 +10,7 @@ import { tauriFileSource, resolveAppleDirTauri, collectDirEntriesTauri,
 import { nhiJsonAdapter } from "../adapters/nhi_json.js";
 import { nhiXmlAdapter } from "../adapters/nhi_xml.js";
 import { listProfiles, createProfile } from "../engine/profiles.js";
+import { withWalWindow } from "../engine/bulk_write.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -276,17 +277,21 @@ export function createImportFlow({ getDriver, labEntries, onImported,
     };
     let result;
     try {
+      // 匯入期切 WAL（大量寫入 -26%），完成或失敗都收斂回單檔；
+      // 窗口在交易外（adapter 內才開交易）
       if (sourceSet) {
         // 多檔來源：整批在單一交易內完成（design D1）
-        result = await adapter.importSourceSet(sourceSet, getDriver(), progress,
-          { labEntries, profileId });
+        result = await withWalWindow(getDriver(), () =>
+          adapter.importSourceSet(sourceSet, getDriver(), progress,
+            { labEntries, profileId }));
       } else {
         const needsBytes = adapter === nhiJsonAdapter || adapter === nhiXmlAdapter;
         const src = needsBytes
           ? { bytes: await window.__TAURI__.fs.readFile(path), name: source.name }
           : source;
-        result = await adapter.importSource(src, getDriver(), progress,
-          { labEntries, profileId });
+        result = await withWalWindow(getDriver(), () =>
+          adapter.importSource(src, getDriver(), progress,
+            { labEntries, profileId }));
       }
     } catch (err) {
       state = "idle";

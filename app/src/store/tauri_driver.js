@@ -2,6 +2,8 @@
 // 每個 DB 路徑一條 rusqlite 連線＋Mutex 序列化）。介面與 node_driver 同形。
 // design D2 修訂二：原 tauri-plugin-sql（sqlx 10 連線池）跨呼叫交易語意
 // 不安全（孤兒交易幽靈讀，2026-08-09 實測），棄用改本橋。
+import { healWalResidue } from "../engine/bulk_write.js";
+
 const BATCH_SIZE = 20000;
 
 const invoke = (...args) => window.__TAURI__.core.invoke(...args);
@@ -11,6 +13,8 @@ export class TauriDriver {
     const d = new TauriDriver();
     d.path = dbPath;
     await d.execute("PRAGMA foreign_keys = ON");
+    // 上次匯入中斷會殘留 WAL 模式（跨連線持久），開啟時收斂回單檔
+    await healWalResidue(d);
     return d;
   }
 
