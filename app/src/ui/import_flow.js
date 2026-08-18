@@ -11,6 +11,7 @@ import { nhiJsonAdapter } from "../adapters/nhi_json.js";
 import { nhiXmlAdapter } from "../adapters/nhi_xml.js";
 import { listProfiles, createProfile } from "../engine/profiles.js";
 import { withWalWindow } from "../engine/bulk_write.js";
+import { progressView } from "./progress_view.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -267,13 +268,16 @@ export function createImportFlow({ getDriver, labEntries, onImported,
     state = "importing";
     show(progressBox);
     bar.value = 0;
-    progressText.textContent = "開始匯入…";
+    // zip 的容器快篩階段不發 progress（秒級），起始文案即檢查訊息、不帶
+    // 百分比（app-import-gui「進度與結果報告」）
+    progressText.textContent = "正在檢查檔案是否曾經匯入…";
     const progress = (processed, totalBytes, readBytes) => {
       window.__MHB_PROGRESS_EVENTS__ = (window.__MHB_PROGRESS_EVENTS__ || 0) + 1;
-      if (totalBytes > 0) bar.value = Math.min(100, (readBytes / totalBytes) * 100);
-      progressText.textContent = processed === 0
-        ? `正在檢查檔案是否曾經匯入…（${Math.round(bar.value)}%）`
-        : `已處理 ${processed.toLocaleString()} 筆（${Math.round(bar.value)}%）`;
+      const view = progressView(processed, totalBytes, readBytes);
+      // 總量不可得＝indeterminate（移除 value 屬性），不顯示假百分比
+      if (view.pct === null) bar.removeAttribute("value");
+      else bar.value = view.pct;
+      progressText.textContent = view.text;
     };
     let result;
     try {
