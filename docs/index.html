@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HealthWorkbench：個人健康資料工作台</title>
+<meta name="description" content="把健保健康存摺、Apple 健康與 CPAP 呼吸器的下載檔，變成一份可搜尋、可帶去回診討論的家庭健康紀錄。全程本機，資料不離開你的電腦。">
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --card: #f5f5f7;
+    --accent: #0a84ff; --accent-fg: #ffffff; --green: #1f7a37;
+    --border: #d2d2d7; --warn-bg: #fff8e6; --warn-border: #e6c96b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1e; --fg: #f5f5f7; --muted: #98989d; --card: #2c2c2e;
+      --accent: #0a84ff; --green: #4cd964;
+      --border: #3a3a3c; --warn-bg: #3a3320; --warn-border: #8a7a3a;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang TC",
+      "Microsoft JhengHei", "Segoe UI", sans-serif;
+    line-height: 1.75; font-size: 17px;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 20px 80px; }
+  h1 { font-size: 1.9em; line-height: 1.3; margin: 24px 0 8px; }
+  h2 { font-size: 1.35em; margin: 56px 0 16px; padding-top: 8px; }
+  h3 { font-size: 1.1em; margin: 28px 0 8px; }
+  p { margin: 12px 0; }
+  a { color: var(--accent); }
+  .lead { font-size: 1.12em; }
+  .muted { color: var(--muted); font-size: 0.92em; }
+  .hero { text-align: center; padding-top: 24px; }
+  .hero .tagline { font-size: 1.15em; margin: 16px auto; max-width: 40em; }
+  .badges { color: var(--muted); font-size: 0.9em; margin-bottom: 8px; }
+  .dl-box {
+    background: var(--card); border-radius: 16px;
+    padding: 28px 20px; margin: 28px 0;
+  }
+  .dl-buttons { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+  .dl-btn {
+    display: inline-block; text-decoration: none;
+    background: var(--accent); color: var(--accent-fg);
+    border-radius: 12px; padding: 14px 26px;
+    font-size: 1.08em; font-weight: 600; min-width: 240px;
+  }
+  .dl-btn small { display: block; font-weight: 400; font-size: 0.78em; opacity: 0.85; }
+  .dl-btn.secondary { background: var(--card); color: var(--fg);
+    border: 1px solid var(--border); }
+  .dl-note { margin-top: 14px; }
+  .free { color: var(--green); font-weight: 600; }
+  .disclaimer {
+    background: var(--warn-bg); border: 1px solid var(--warn-border);
+    border-radius: 12px; padding: 14px 18px; margin: 28px 0; font-size: 0.95em;
+  }
+  .steps { counter-reset: step; list-style: none; }
+  .steps li {
+    counter-increment: step; position: relative;
+    padding: 0 0 18px 52px; margin: 0;
+  }
+  .steps li::before {
+    content: counter(step); position: absolute; left: 0; top: 2px;
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--accent); color: var(--accent-fg);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+  }
+  figure { margin: 24px 0; }
+  figure img {
+    max-width: 100%; border-radius: 12px; border: 1px solid var(--border);
+    display: block;
+  }
+  figcaption { color: var(--muted); font-size: 0.9em; margin-top: 8px; }
+  ul.features { list-style: none; }
+  ul.features li { padding: 6px 0 6px 30px; position: relative; }
+  ul.features li::before { content: "✓"; position: absolute; left: 4px;
+    color: var(--green); font-weight: 700; }
+  details {
+    background: var(--card); border-radius: 12px;
+    padding: 14px 18px; margin: 10px 0;
+  }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { margin-top: 10px; }
+  code { background: var(--card); border-radius: 5px; padding: 1px 6px;
+    font-size: 0.88em; }
+  footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--border);
+    color: var(--muted); font-size: 0.9em; }
+  @media (max-width: 480px) { body { font-size: 16px; } .dl-btn { width: 100%; } }
+</style>
+</head>
+<body>
+<main>
+
+<div class="hero">
+  <h1>HealthWorkbench<br><span style="font-size:0.62em">個人健康資料工作台</span></h1>
+  <p class="tagline">把健保「健康存摺」、Apple 健康與 CPAP 呼吸器的下載檔，
+  變成一份越養越深、可搜尋、可帶去回診討論的家庭健康紀錄。<br>
+  <strong>全程在你自己的電腦上運作，資料不上傳、不註冊、不追蹤。</strong></p>
+  <p class="badges">macOS／Windows 桌面程式 · <span class="free">完全免費</span> ·
+  開放原始碼（MIT 授權）· 檢視時不需要網路</p>
+
+  <div class="dl-box">
+    <h2 style="margin:0 0 6px; padding:0">下載安裝</h2>
+    <p class="muted" id="ver-line" style="margin-bottom:16px">正在取得最新版本…</p>
+    <div class="dl-buttons">
+      <a class="dl-btn" id="btn-mac"
+         href="https://github.com/notoriouslab/health-workbench/releases/latest">
+         下載 macOS 版<small>Apple Silicon（M 系列晶片）.dmg</small></a>
+      <a class="dl-btn" id="btn-win"
+         href="https://github.com/notoriouslab/health-workbench/releases/latest">
+         下載 Windows 版<small>64 位元安裝程式 .exe</small></a>
+    </div>
+    <p class="dl-note muted">點按鈕就會直接下載安裝檔，<strong>不需要註冊任何帳號</strong>。<br>
+    下載後怎麼開啟？見下方「<a href="#install">安裝說明</a>」兩行就講完。</p>
+  </div>
+</div>
+
+<div class="disclaimer">
+<strong>免責聲明</strong>：本軟體僅進行個人健康資料的備份、匯整、搜尋與
+視覺化排版，不提供任何醫療診斷、治療、用藥或其他醫療判斷建議。資料可能
+不完整或有格式誤差，畫面上數值的意義請諮詢合格醫事人員。匯出的檔案含有
+完整個人醫療資料，請妥善保管，切勿隨意外傳。
+</div>
+
+<h2>這是什麼？</h2>
+<p>健保署的「健康存摺」只查得到最近三年的就醫與用藥紀錄，Apple 健康的
+匯出檔又大又難讀，CPAP 呼吸器的資料則鎖在一張 SD 卡裡。HealthWorkbench
+把這些來源整理進同一個本機資料庫：每隔一陣子把新下載的檔案拖進來，
+三年的滾動視窗就被接成不斷加深的個人縱深，重複的部分自動跳過，
+不會越匯越亂。</p>
+<p>打開程式就是完整的健康儀表板：總覽、就醫時間軸、用藥清單（附成分
+與官方仿單連結）、檢驗趨勢、睡眠呼吸，還有全文搜尋。要給家人或帶去
+診間，可以匯出成單一 HTML 檔或 EPUB 電子書，收到的人不必安裝任何
+程式就能看。</p>
+
+<h2 id="install">安裝說明</h2>
+<h3>macOS</h3>
+<p>打開下載的 <code>.dmg</code>，把 App 拖進「應用程式」。程式已經過
+Apple 簽章與公證，首次開啟時系統會問一次「確定要打開從網路下載的
+App 嗎」，按「打開」就進去了（這是 macOS 對所有下載程式的標準一次性
+確認，不是錯誤）。</p>
+<h3>Windows</h3>
+<p>執行下載的 <code>.exe</code> 安裝程式。若出現藍色的 SmartScreen
+視窗，點「其他資訊」→「仍要執行」（安裝檔尚未購買憑證簽章，這是
+Windows 對它的標準提示）。</p>
+
+<h2>快速上手（三步）</h2>
+<ol class="steps">
+  <li><strong>下載自己的資料</strong><br>
+    健保：登入健康存摺（myhealthbank.nhi.gov.tw）→ 下載「醫療類」資料
+    （建議 JSON）。<br>
+    Apple：iPhone「健康」App → 右上角個人頭像 → 匯出所有健康資料 →
+    把匯出檔傳到電腦。<br>
+    CPAP（ResMed）：把呼吸器的 SD 卡插進讀卡機，整張卡複製到電腦。</li>
+  <li><strong>拖進程式</strong><br>
+    選擇這份資料屬於哪位家庭成員 → 開始匯入。格式自動判別、重複自動
+    跳過，同一份檔案匯幾次都不會亂。</li>
+  <li><strong>看與分享</strong><br>
+    「資料檢視」分頁直接看；要給家人或帶去診間，匯出成 HTML（電腦用
+    瀏覽器開）或 EPUB（手機、平板用 Apple Books 開）。</li>
+</ol>
+
+<h2>畫面</h2>
+<p class="muted">以下截圖全部使用合成的示範資料，人名、院所、診斷皆為虛構。</p>
+<figure>
+  <img src="screenshots/overview.png" alt="總覽頁截圖：體重、血壓、日均步數與最近就診" loading="lazy">
+  <figcaption>總覽：體重、血壓、日均步數與最近就診一眼看完</figcaption>
+</figure>
+<figure>
+  <img src="screenshots/timeline.png" alt="就醫時間軸截圖" loading="lazy">
+  <figcaption>就醫時間軸：跨院所、跨年度，展開單筆可看診斷、用藥與仿單連結</figcaption>
+</figure>
+<figure>
+  <img src="screenshots/meds.png" alt="用藥頁截圖" loading="lazy">
+  <figcaption>用藥：以藥品為核心聚合，長期用藥的斷續與變化看得出來</figcaption>
+</figure>
+<figure>
+  <img src="screenshots/trends.png" alt="檢驗趨勢截圖" loading="lazy">
+  <figcaption>檢驗趨勢：跨院所折線圖，灰帶為參考值區間，附官方衛教說明</figcaption>
+</figure>
+
+<h2>核心特色</h2>
+<ul class="features">
+  <li><strong>資料留在自己家</strong>：不註冊、不上傳、不追蹤，檢視過程零網路請求</li>
+  <li><strong>突破三年視窗</strong>：健康存摺只保留最近三年，逐次匯入就能無限期累積</li>
+  <li><strong>全家一台電腦</strong>：多位成員各自管理，一鍵切換，匯錯人救得回來</li>
+  <li><strong>以藥品為核心的視角</strong>：長期用藥的斷續與劑量變化一目瞭然</li>
+  <li><strong>睡眠呼吸與體重同一頁</strong>：CPAP 每晚數據與體重共用時間軸對照</li>
+  <li><strong>帶得走的一份檔案</strong>：匯出 HTML 或 EPUB，互動保留，對方免安裝</li>
+</ul>
+
+<h2>常見問題</h2>
+<details>
+  <summary>需要註冊 GitHub 或任何帳號嗎？</summary>
+  <p>不用。點上面的下載按鈕就會直接下載安裝檔；使用程式的過程也完全
+  不需要帳號。GitHub 只是我們存放程式碼與安裝檔的地方，就像一個檔案
+  倉庫，訪客下載不需要登入。</p>
+</details>
+<details>
+  <summary>免費嗎？之後會收費嗎？</summary>
+  <p>完全免費，而且開放原始碼（MIT 授權）。它是為了自己與家人的需要
+  而做的工具，沒有商業模式，也沒有任何內購或訂閱。</p>
+</details>
+<details>
+  <summary>我的健康資料會被傳到哪裡嗎？</summary>
+  <p>不會。資料只存在你電腦裡的程式資料夾，程式檢視過程零網路請求
+  （只有點擊藥品仿單這類外部連結時才會開瀏覽器）。想清空一切，刪掉
+  那個資料夾就結束了。</p>
+</details>
+<details>
+  <summary>手機可以看嗎？</summary>
+  <p>程式本身裝在電腦上，但可以把資料匯出成 EPUB 電子書，用 iPhone、
+  iPad 的「書籍」（Apple Books）打開，字級可調、圖表照樣能互動。
+  Android 實測可用 Reasily 閱讀器。</p>
+</details>
+<details>
+  <summary>macOS 說「無法打開」或 Windows 跳出藍色警告？</summary>
+  <p>macOS：程式已簽章公證，正常情況按「打開」即可；若用的是很舊的
+  版本（v0.5.0 以前），按住 Control 點程式圖示 →「開啟」。<br>
+  Windows：SmartScreen 視窗點「其他資訊」→「仍要執行」。這兩個都是
+  系統對下載程式的標準提示，不是程式有問題。</p>
+</details>
+<details>
+  <summary>支援哪些 CPAP 呼吸器？</summary>
+  <p>目前只有 ResMed S9 AutoSet 經過實機驗證。ResMed 較新機型
+  （S10、AirSense）格式理論上相同但未實測；Philips 等其他廠牌目前
+  不支援。匯不進來的話歡迎到 GitHub 回報（注意：不要把記錄卡檔案
+  上傳到回報頁，那裡面是你的健康資料）。</p>
+</details>
+<details>
+  <summary>遇到問題怎麼回報？</summary>
+  <p>到 <a href="https://github.com/notoriouslab/health-workbench/issues">GitHub
+  的 Issues 頁</a>留言（這個需要免費註冊一個 GitHub 帳號），描述你看到
+  的畫面訊息即可。請不要把匯出檔或健康資料附上去。</p>
+</details>
+
+<footer>
+  <p>HealthWorkbench 屬於 notoriouslab 開源工具組 ·
+  <a href="https://github.com/notoriouslab/health-workbench">原始碼與完整說明（GitHub）</a> ·
+  <a href="https://github.com/notoriouslab/health-workbench/releases">所有版本下載</a></p>
+</footer>
+
+</main>
+<script>
+// 把下載按鈕指到最新版的安裝檔本體（新手點一下就下載，不經過 GitHub 頁面）。
+// 檔名帶版號（HealthWorkbench_x.y.z_aarch64.dmg / _x64-setup.exe），所以
+// 向 GitHub API 查最新 release；查不到（離線、限流）就維持 releases 頁連結。
+(function () {
+  var mac = document.getElementById("btn-mac");
+  var win = document.getElementById("btn-win");
+  var ver = document.getElementById("ver-line");
+  fetch("https://api.github.com/repos/notoriouslab/health-workbench/releases/latest")
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (rel) {
+      var assets = rel.assets || [];
+      function find(suffix) {
+        for (var i = 0; i < assets.length; i++) {
+          if (assets[i].name.endsWith(suffix)) return assets[i].browser_download_url;
+        }
+        return null;
+      }
+      var dmg = find(".dmg");
+      var exe = find("-setup.exe") || find(".msi");
+      if (dmg) mac.href = dmg;
+      if (exe) win.href = exe;
+      ver.textContent = "最新版本 " + rel.tag_name + "（"
+        + (rel.published_at || "").slice(0, 10) + " 發布）";
+    })
+    .catch(function () {
+      ver.textContent = "按鈕會開啟下載頁，選標著 .dmg（Mac）或 .exe（Windows）的檔案";
+    });
+  // 依作業系統把對應按鈕排前面
+  var isMac = /Mac/i.test(navigator.platform || "");
+  if (!isMac && win && mac && win.parentNode) win.parentNode.insertBefore(win, mac);
+})();
+</script>
+</body>
+</html>
