@@ -15,9 +15,12 @@ JS 與 Python 兩端實作 MUST 逐字同步（空庫 schema dump 全等）
 資料 SHALL 以 profile_id 完全隔離（去重 UNIQUE 鍵含 profile_id，
 成員間冪等互不干擾）。profiles 表 SHALL 儲存顯示名稱與遮罩身分證，
 MUST NOT 儲存完整身分證字號。刪除成員 MUST 於單一交易內清除該
-成員在全部資料表（含 source_documents）的所有列。本輪 MUST NOT
-變更 DDL（schema 維持 v3；Python 側 schema.py 不動，schema parity
-測試基準不變）。
+成員在全部資料表（含 source_documents）的所有列。
+
+（刪除原文末句「本輪 MUST NOT 變更 DDL（schema 維持 v3…）」：該句是
+change `multi-profile-management` 的範圍護欄，delta 覆蓋時被寫進主
+spec 殘留至今；DDL 凍結是單一 change 的執行約束，不是資料模型的長期
+規格。schema 版本現況由「匯入統計記錄」requirement 的 v5 條文陳述。）
 
 #### Scenario: 兩人資料隔離
 - **WHEN** 同一資料庫含兩位成員的資料，查詢以 profile_id 篩選
@@ -27,34 +30,46 @@ MUST NOT 儲存完整身分證字號。刪除成員 MUST 於單一交易內清�
 #### Scenario: 刪除成員交易原子
 - **WHEN** 刪除成員的逐表清除進行中發生中斷
 - **THEN** 整批回滾，該成員資料完整保留，無半刪狀態
+
 <!-- @trace
-source: multi-profile-management
-updated: 2026-08-10
+source: import-progress-and-single-pass
+updated: 2026-08-19
 code:
   - docs/verification/multi_profile_qa_closeout.md
+  - docs/verification/import_single_pass.md
 -->
 
 ---
+
 ### Requirement: 來源追溯
+
 每筆正規化資料 SHALL 帶 source_document 外鍵、來源節區/型別與
 來源索引，足以還原至原始檔案中的位置。source_documents SHALL 記錄
-檔名、SHA-256、匯入時間與 adapter 名稱及版本。
+檔名、SHA-256、匯入時間與 adapter 名稱及版本；另 SHALL 有 nullable
+欄位 `container_sha256` 記錄 zip 容器位元組的 SHA-256（僅 zip 來源
+填值，供重複匯入快篩；非 zip 來源為 NULL）。內容 SHA-256 的語意
+（zip 與資料夾匯入同一份資料得到相同指紋）不變。
 
 #### Scenario: 從圖表回到原始檔
 - **WHEN** 查詢任一檢驗結果的來源
 - **THEN** 可得原始檔名、節區（r7）與該筆在節區中的索引
 
+#### Scenario: 容器指紋只在 zip 來源出現
+- **WHEN** 分別以 zip 與 XML 檔匯入
+- **THEN** zip 的來源列 container_sha256 非空，XML 檔的為 NULL
 
 <!-- @trace
-source: mvp-core-dashboard
-updated: 2026-08-09
+source: import-progress-and-single-pass
+updated: 2026-08-19
 code:
   - bin/hwb
   - docs/verification/karen_reality.md
   - README.md
+  - docs/verification/import_single_pass.md
 -->
 
 ---
+
 ### Requirement: 品質旗標貫穿
 quality_flags SHALL 為每筆資料的可累加欄位，聚合查詢與趨勢 MUST
 排除帶排除性旗標（epoch_placeholder_date、out_of_range）的資料，
@@ -138,10 +153,13 @@ code:
 
 ---
 ### Requirement: 匯入統計記錄
+
 source_documents SHALL 記錄每次匯入的統計（import_stats，JSON：
 inserted/skipped_dup/collisions）；adapter 於匯入收尾 MUST 寫入。
 schema 演進 SHALL 以 MIGRATIONS 前向遷移表實作，舊版資料庫開啟時
-自動逐版升級。
+自動逐版升級。現行 schema 版本為 **v5**（新增 `container_sha256`），
+JS 與 Python 兩端的 DDL、MIGRATIONS、SCHEMA_VERSION MUST 同步
+（schema parity 測試以空庫 dump 全等釘住）。
 
 **遷移前 MUST 自動產生升級前的資料庫快照**，且僅在偵測到既有版本低於
 程式版本時產生（全新資料庫不做）。快照失敗 MUST 中止遷移並明確告知
@@ -168,6 +186,11 @@ MAY 用於匯入當下的報告，MUST NOT 寫入 `source_documents`。
 - **WHEN** 以現行程式開啟 schema v1 資料庫
 - **THEN** 自動遷移至現行版本且既有資料完整保留
 
+#### Scenario: 舊庫自動升級（v4 → v5）
+- **WHEN** v4 資料庫被新版開啟
+- **THEN** 自動執行 v5 遷移，source_documents 具 container_sha256 欄位
+  且既有列該欄為 NULL
+
 #### Scenario: 升級前自動快照
 - **WHEN** 開啟一個版本落後於程式的既有資料庫
 - **THEN** 先產生一份升級前的快照再遷移；快照可被「匯入既有資料庫檔」
@@ -183,14 +206,15 @@ MAY 用於匯入當下的報告，MUST NOT 寫入 `source_documents`。
   資料庫的筆數（沒有任何一列裝著整批合計）
 
 <!-- @trace
-source: cpap-sleep-therapy
-updated: 2026-08-14
+source: import-progress-and-single-pass
+updated: 2026-08-19
 code:
   - bin/hwb
   - docs/verification/karen_reality.md
   - README.md
   - docs/verification/cpap_schema_v4_migration.md
   - docs/verification/batch_stats_double_count.md
+  - docs/verification/import_single_pass.md
 -->
 
 ---

@@ -168,6 +168,13 @@ code:
 adapter MUST 以已讀位元組數回報進度（每處理 5000 筆呼叫一次
 progress），供 GUI 顯示百分比；進度回報失敗 MUST NOT 影響匯入結果。
 
+進度的總量（totalBytes）MUST 為**解析內容的未壓縮總量**，與分子同一
+單位：zip 來源取 central directory 的未壓縮大小欄位；非 zip 來源即檔案
+大小。未壓縮大小取不到時（zip64 標記 `0xFFFFFFFF` 或欄位為 0）
+totalBytes MUST 以 0 回報，GUI 據此不顯示百分比（見 `app-import-gui`）。
+MUST NOT 以壓縮後大小當總量、以解壓後位元組當分子（兩者相差一個壓縮比，
+實測真實匯出檔為 24.1 倍，百分比會在流程早期即到頂）。
+
 **多檔來源** MUST 以整批合計位元組為總量、跨檔累加已讀位元組，進度在
 整批匯入過程中 MUST 維持單調遞增。
 
@@ -176,19 +183,30 @@ progress），供 GUI 顯示百分比；進度回報失敗 MUST NOT 影響匯入
 - **THEN** readBytes 單調遞增至 totalBytes，事件數 ≥ 50（進度以資料塊為
   週期回報，220MB／4MB 塊＝56 事件，2026-08-09 實測校準）
 
+#### Scenario: zip 分母誠實
+- **WHEN** 匯入 zip 來源並記錄 progress 事件
+- **THEN** totalBytes 等於主 XML 的未壓縮大小（非 zip 檔大小），百分比
+  到達 100% 時匯入隨即完成，不存在「停在 100% 繼續跑」的區間
+
+#### Scenario: 未壓縮大小不可得的 fallback
+- **WHEN** zip 的未壓縮大小欄位為 0xFFFFFFFF 或 0
+- **THEN** totalBytes 以 0 回報，匯入照常完成，進度僅以筆數呈現
+
 #### Scenario: 多檔進度單調
 - **WHEN** 匯入含多個檔案的來源
 - **THEN** 已讀位元組跨檔累加且不回退，總量為整批合計
 
 <!-- @trace
-source: cpap-sleep-therapy
-updated: 2026-08-13
+source: import-progress-and-single-pass
+updated: 2026-08-19
 code:
   - docs/verification/app_qa_closeout.md
   - docs/verification/cpap_resmed_adapter.md
+  - docs/verification/import_single_pass.md
 -->
 
 ---
+
 ### Requirement: 匯入歸屬指定
 
 adapter 匯入 MUST 接受明確的成員 id（opts.profileId，必填）並於
@@ -312,4 +330,75 @@ updated: 2026-08-14
 code:
   - docs/verification/cpap_resmed_adapter.md
   - docs/verification/viewer_history_refinement.md
+-->
+
+---
+### Requirement: 單遍匯入與重複檔終點判定
+
+Apple zip 來源 MUST 以單次解壓完成匯入：同一遍串流內計算內容 SHA-256、
+解析並批次入庫，MUST NOT 為了先取得指紋而額外解壓一遍。
+
+重複判定據此移至交易終點：來源列於交易內先以佔位值 `pending` 寫入
+sha256 取得 docId，解析結束算出真值後查全庫，命中 MUST 整筆回滾且訊息
+含原歸屬成員名稱與原匯入時刻（語意同既有重複檔訊息）；未命中 MUST 於
+COMMIT 前將佔位值更新為真值。佔位值 MUST NOT 被提交。
+
+**容器指紋快篩**：zip 來源 MUST 於解壓前先計算 zip 檔位元組的 SHA-256
+並查 `container_sha256`，命中即跳過（訊息同重複檔）；快篩 miss MUST NOT
+影響正確性（終點判定兜底）。`container_sha256` MUST 排除於 Python 差分
+對帳的比對欄位（App 端快篩專用；Python CLI 不實作快篩）。
+
+非 zip 來源（XML 檔、資料夾）MUST 維持既有流程：先雜湊檔案位元組（即
+內容指紋）判重，再解析；其重複判定時機與訊息不變。
+
+#### Scenario: 同一顆 zip 重複匯入被快篩擋下
+- **WHEN** 同一個 zip 檔第二次匯入
+- **THEN** 不發生解壓與解析，直接回報重複（含原歸屬成員與原匯入時刻），
+  資料庫零寫入
+
+#### Scenario: 重新匯出的同內容 zip 於終點回滾
+- **WHEN** zip 位元組不同但主 XML 內容相同的檔案匯入
+- **THEN** 匯入流程跑完後於終點判定重複，整筆回滾（含來源列），訊息
+  含原歸屬成員與原匯入時刻
+
+#### Scenario: 佔位值不外漏
+- **WHEN** 任何匯入完成或失敗後查詢 source_documents
+- **THEN** 不存在 sha256 為佔位值的列
+
+<!-- @trace
+source: import-progress-and-single-pass
+updated: 2026-08-19
+code:
+  - docs/verification/import_single_pass.md
+-->
+
+---
+
+### Requirement: 匯入期間的日誌模式窗口
+
+匯入 MUST 在 WAL 日誌模式窗口內執行：開始前切
+`journal_mode=WAL`＋`synchronous=NORMAL`，完成或失敗後 MUST
+`wal_checkpoint(TRUNCATE)` 並切回 `journal_mode=DELETE`，使 `-wal`／
+`-shm` 檔不殘留。切換與 checkpoint MUST 於交易外執行。
+
+日誌模式的切換與查詢語句 MUST 以查詢介面執行：rusqlite 的 `execute`
+對回傳列的語句回錯，而 `journal_mode` 與 `wal_checkpoint` 都回傳列
+（`synchronous` 賦值不回列）。
+
+App 開啟資料庫時 MUST 自癒：偵測 journal_mode 為 wal（上次匯入中斷
+殘留）即 checkpoint 並切回 DELETE。
+
+#### Scenario: 匯入後不殘留 WAL 檔
+- **WHEN** 一次匯入完成（成功或失敗皆然）
+- **THEN** 資料庫目錄無 `-wal` 與 `-shm` 檔，journal_mode 為 delete
+
+#### Scenario: 中斷殘留的自癒
+- **WHEN** 資料庫檔處於 WAL 模式（模擬匯入中斷）且 App 重新開啟
+- **THEN** 開啟後 journal_mode 為 delete、`-wal` 檔消失、資料完整
+
+<!-- @trace
+source: import-progress-and-single-pass
+updated: 2026-08-19
+code:
+  - docs/verification/import_single_pass.md
 -->

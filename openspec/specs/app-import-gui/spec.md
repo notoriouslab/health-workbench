@@ -57,9 +57,14 @@ code:
 ---
 ### Requirement: 進度與結果報告
 
-匯入中 MUST 顯示進度（百分比＋已處理筆數）；完成後 MUST 顯示增量
+匯入中 MUST 顯示進度（進度文字與百分比規則見下）；完成後 MUST 顯示增量
 結果報告卡：各節區筆數、新增/重複（冪等跳過）統計、品質旗標摘要、
 未對照項提示，結構沿用既有增量品質報告。
+
+百分比 MUST 僅於 totalBytes > 0 時顯示，否則只顯示已處理筆數（寧可
+不顯示也不顯示假的百分比）。zip 匯入的容器快篩期間 MUST 顯示「正在檢查
+檔案是否曾經匯入…」且不帶百分比（該階段為秒級）。百分比 MUST NOT 提前
+到達 100%：到達 100% 時匯入隨即完成。
 
 **多檔來源的報告卡** MUST 額外顯示批次名稱、檔案總數與其中新檔數，
 並以收合區塊提供逐檔明細（檔名、狀態、筆數）。逐檔明細 MUST 收合，
@@ -86,12 +91,21 @@ code:
 - **WHEN** 將同一批檔案再次匯入
 - **THEN** 顯示「這批檔案先前都已匯入」，資料庫零新增
 
+#### Scenario: 百分比 fallback
+- **WHEN** adapter 回報 totalBytes 為 0
+- **THEN** 進度文字僅含已處理筆數，不含百分比
+
+#### Scenario: 進度不再停在假 100%
+- **WHEN** 匯入 zip 來源
+- **THEN** 顯示的百分比隨解壓進度前進，到達 100% 時流程即結束
+
 <!-- @trace
-source: cpap-sleep-therapy
-updated: 2026-08-13
+source: import-progress-and-single-pass
+updated: 2026-08-19
 code:
   - docs/verification/app_qa_closeout.md
   - docs/verification/cpap_gui_batch.md
+  - docs/verification/import_single_pass.md
 -->
 
 ---
