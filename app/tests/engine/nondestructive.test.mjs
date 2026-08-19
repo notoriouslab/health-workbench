@@ -22,7 +22,7 @@ import { seedCpapDoc } from "../helpers/cpap_seed.mjs";
 // 12 條測試零轉紅）。新增資料表 MUST 同時接上這裡與 baseline 的 seed。
 const ALL_TABLES = ["profiles", "source_documents", "encounters", "medications",
   "lab_results", "reports", "immunizations", "body_measurements",
-  "cancer_screenings", "apple_records", "apple_workouts",
+  "cancer_screenings", "apple_records", "apple_workouts", "apple_daily",
   "cpap_daily", "cpap_events", "cpap_oximetry"];
 
 // ---------- 快照與白名單斷言 ----------

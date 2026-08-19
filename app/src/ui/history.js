@@ -23,7 +23,7 @@ export const RESCUE_TABLE_LABELS = {
   encounters: "就醫", medications: "用藥", lab_results: "檢驗",
   reports: "報告", immunizations: "疫苗", body_measurements: "身體數值",
   cancer_screenings: "癌症篩檢", apple_records: "Apple 紀錄",
-  apple_workouts: "Apple 體能訓練",
+  apple_workouts: "Apple 體能訓練", apple_daily: "Apple 每日彙總",
   cpap_daily: "睡眠每日摘要", cpap_events: "呼吸事件", cpap_oximetry: "睡眠血氧",
 };
 
@@ -35,7 +35,7 @@ export const RESCUE_TABLE_LABELS = {
 // 而這裡沒跟上就會轉紅。
 export const COUNT_TABLES = ["encounters", "medications", "lab_results",
   "reports", "immunizations", "cancer_screenings", "apple_records",
-  "apple_workouts", "body_measurements",
+  "apple_workouts", "apple_daily", "body_measurements",
   "cpap_daily", "cpap_events", "cpap_oximetry"];
 
 // 轉義含 " （面板有屬性位置插值需求，且與 profile_manager／import_flow

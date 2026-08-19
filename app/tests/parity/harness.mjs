@@ -111,7 +111,8 @@ export async function dumpDb(dbPath) {
       return { ...rest, profile: profKey.get(profile_id),
         import_stats: import_stats ? JSON.parse(import_stats) : null };
     }));
-  for (const t of [...FP_TABLES, "apple_records", "apple_workouts"]) {
+  for (const t of [...FP_TABLES, "apple_records", "apple_workouts",
+    "apple_daily"]) {
     out[t] = canonicalize((await d.select(`SELECT * FROM ${t}`)).map(r => {
       const { id, profile_id, doc_id, ...rest } = { ...r };
       return { ...rest, profile: profKey.get(profile_id), doc: docKey.get(doc_id) };

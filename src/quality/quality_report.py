@@ -66,6 +66,8 @@ DATE_RANGE_COLUMNS = [
     ("encounters", "date"), ("lab_results", "test_date"),
     ("immunizations", "date"), ("body_measurements", "check_date"),
     ("apple_records", "start_ts"),
+    # apple_daily：raw 清理後 apple_records 範圍縮水，完整期間由彙總表扛
+    ("apple_daily", "day"),
     ("cpap_daily", "summary_date"), ("cpap_events", "session_date"),
     ("cpap_oximetry", "session_date"),
 ]

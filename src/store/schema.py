@@ -1,6 +1,26 @@
 """health-database schema：全表 profile_id、來源追溯、quality_flags、版本化。"""
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
+
+# Apple 每日彙總表（v6 新增）：同時作為初始 DDL 與 5→6 遷移的單一來源，
+# 與 app/src/store/schema.js 的 APPLE_DAILY_DDL 逐字同步。
+APPLE_DAILY_DDL = """
+CREATE TABLE IF NOT EXISTS apple_daily(
+    id INTEGER PRIMARY KEY,
+    profile_id INTEGER NOT NULL REFERENCES profiles(id),
+    doc_id INTEGER NOT NULL REFERENCES source_documents(id),
+    type_zh TEXT NOT NULL,
+    day TEXT NOT NULL,
+    source_name TEXT NOT NULL DEFAULT '',
+    n INTEGER NOT NULL,
+    sum_v REAL,
+    min_v REAL,
+    max_v REAL,
+    avg_v REAL,
+    extra_json TEXT,
+    quality_flags TEXT NOT NULL DEFAULT '',
+    UNIQUE(profile_id, type_zh, day, source_name));
+"""
 
 # CPAP 三表（v4 新增）：同時作為初始 DDL 與 3→4 遷移的單一來源，兩處手寫
 # 會漂移。與 app/src/store/schema.js 的 CPAP_DDL 逐字同步（schema parity
@@ -243,7 +263,35 @@ CREATE TABLE IF NOT EXISTS apple_workouts(
     source_name TEXT,
     quality_flags TEXT NOT NULL DEFAULT '',
     UNIQUE(profile_id, activity, start_ts, end_ts, source_name));
-""" + CPAP_DDL
+""" + CPAP_DDL + APPLE_DAILY_DDL
+
+# Apple 型別分配（F6 裁定）：逐筆保留 9＋只存彙總 20，聯集恰等於 adapter
+# 的 WANTED（tests/test_type_allocation.py 對帳）。與 JS 端
+# app/src/engine/aggregate.js 鏡像；聚合 SQL 逐字同步（aggregate parity
+# 測試以字串全等釘住）。imports＝匯入路徑三句（各帶 doc_id 參數
+# params 個）、backfill＝v5→v6 回填兩句（零參數）。
+PER_ROW_TYPES = ["體重", "BMI", "體脂率", "除脂體重", "身高", "收縮壓", "舒張壓", "安靜心率", "行走穩定度"]
+AGGREGATE_TYPES = ["心率", "血氧", "呼吸速率", "睡眠", "步數", "步行跑步距離", "騎車距離", "爬樓層數", "活動能量", "基礎能量", "步行速度", "步幅", "雙腳支撐比例", "步態不對稱比例", "耳機音量暴露", "飲水量", "攝取熱量", "攝取脂肪", "攝取碳水", "攝取蛋白質"]
+
+IMPORT_AGGREGATE_STATEMENTS = [
+  {
+    "sql": "INSERT INTO apple_daily(profile_id, doc_id, type_zh, day, source_name,\n  n, sum_v, min_v, max_v, avg_v, quality_flags)\nSELECT profile_id, MAX(doc_id), type_zh, substr(start_ts,1,10),\n  COALESCE(source_name,''),\n  COUNT(*), SUM(COALESCE(value_normalized, value_numeric)), MIN(COALESCE(value_normalized, value_numeric)), MAX(COALESCE(value_normalized, value_numeric)), AVG(COALESCE(value_normalized, value_numeric)),\n  CASE WHEN substr(start_ts,1,10) < '2000-01-01'\n    THEN 'epoch_placeholder_date' ELSE '' END\nFROM apple_records\nWHERE type_zh IN ('心率','血氧','呼吸速率','睡眠','步數','步行跑步距離','騎車距離','爬樓層數','活動能量','基礎能量','步行速度','步幅','雙腳支撐比例','步態不對稱比例','耳機音量暴露','飲水量','攝取熱量','攝取脂肪','攝取碳水','攝取蛋白質') AND (profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'')) IN (SELECT profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'') FROM apple_records WHERE doc_id = ?)\nGROUP BY profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'')\nON CONFLICT(profile_id, type_zh, day, source_name) DO UPDATE SET\n  n=excluded.n, sum_v=excluded.sum_v, min_v=excluded.min_v,\n  max_v=excluded.max_v, avg_v=excluded.avg_v, doc_id=excluded.doc_id,\n  quality_flags=excluded.quality_flags\n  WHERE excluded.n >= apple_daily.n",
+    "params": 1
+  },
+  {
+    "sql": "UPDATE apple_daily SET extra_json = (\n  SELECT json_group_object(ident, mins) FROM (\n    SELECT COALESCE(r.value_text,'') AS ident,\n      CAST(ROUND(SUM((julianday(r.end_ts) - julianday(r.start_ts)) * 1440))\n        AS INTEGER) AS mins\n    FROM apple_records r\n    WHERE r.profile_id = apple_daily.profile_id AND r.type_zh = '睡眠'\n      AND substr(r.start_ts,1,10) = apple_daily.day\n      AND COALESCE(r.source_name,'') = apple_daily.source_name\n    GROUP BY COALESCE(r.value_text,'')\n    ORDER BY COALESCE(r.value_text,'')))\nWHERE type_zh = '睡眠' AND (apple_daily.profile_id, apple_daily.type_zh, apple_daily.day, apple_daily.source_name) IN (SELECT profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'') FROM apple_records WHERE doc_id = ?)",
+    "params": 1
+  },
+  {
+    "sql": "UPDATE apple_daily\nSET quality_flags = CASE\n  WHEN quality_flags = '' THEN 'partial_reimport_skipped'\n  WHEN instr(quality_flags, 'partial_reimport_skipped') > 0 THEN quality_flags\n  ELSE quality_flags || ',partial_reimport_skipped' END\nWHERE rowid IN (\n  SELECT a.rowid FROM apple_daily a JOIN (\n    SELECT profile_id p, type_zh t, substr(start_ts,1,10) d,\n      COALESCE(source_name,'') s, COUNT(*) c\n    FROM apple_records\n    WHERE type_zh IN ('心率','血氧','呼吸速率','睡眠','步數','步行跑步距離','騎車距離','爬樓層數','活動能量','基礎能量','步行速度','步幅','雙腳支撐比例','步態不對稱比例','耳機音量暴露','飲水量','攝取熱量','攝取脂肪','攝取碳水','攝取蛋白質') AND (profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'')) IN (SELECT profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'') FROM apple_records WHERE doc_id = ?)\n    GROUP BY profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'')\n  ) g ON a.profile_id = g.p AND a.type_zh = g.t AND a.day = g.d\n    AND a.source_name = g.s\n  WHERE a.n > g.c)",
+    "params": 1
+  }
+]
+
+BACKFILL_STATEMENTS = [
+  "INSERT INTO apple_daily(profile_id, doc_id, type_zh, day, source_name,\n  n, sum_v, min_v, max_v, avg_v, quality_flags)\nSELECT profile_id, MAX(doc_id), type_zh, substr(start_ts,1,10),\n  COALESCE(source_name,''),\n  COUNT(*), SUM(COALESCE(value_normalized, value_numeric)), MIN(COALESCE(value_normalized, value_numeric)), MAX(COALESCE(value_normalized, value_numeric)), AVG(COALESCE(value_normalized, value_numeric)),\n  CASE WHEN substr(start_ts,1,10) < '2000-01-01'\n    THEN 'epoch_placeholder_date' ELSE '' END\nFROM apple_records\nWHERE type_zh IN ('心率','血氧','呼吸速率','睡眠','步數','步行跑步距離','騎車距離','爬樓層數','活動能量','基礎能量','步行速度','步幅','雙腳支撐比例','步態不對稱比例','耳機音量暴露','飲水量','攝取熱量','攝取脂肪','攝取碳水','攝取蛋白質')\nGROUP BY profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'')\nON CONFLICT(profile_id, type_zh, day, source_name) DO UPDATE SET\n  n=excluded.n, sum_v=excluded.sum_v, min_v=excluded.min_v,\n  max_v=excluded.max_v, avg_v=excluded.avg_v, doc_id=excluded.doc_id,\n  quality_flags=excluded.quality_flags\n  WHERE excluded.n >= apple_daily.n",
+  "UPDATE apple_daily SET extra_json = (\n  SELECT json_group_object(ident, mins) FROM (\n    SELECT COALESCE(r.value_text,'') AS ident,\n      CAST(ROUND(SUM((julianday(r.end_ts) - julianday(r.start_ts)) * 1440))\n        AS INTEGER) AS mins\n    FROM apple_records r\n    WHERE r.profile_id = apple_daily.profile_id AND r.type_zh = '睡眠'\n      AND substr(r.start_ts,1,10) = apple_daily.day\n      AND COALESCE(r.source_name,'') = apple_daily.source_name\n    GROUP BY COALESCE(r.value_text,'')\n    ORDER BY COALESCE(r.value_text,'')))\nWHERE type_zh = '睡眠'"
+]
 
 # 前向遷移：{來源版本: [SQL, ...]}，逐版執行至 SCHEMA_VERSION。
 # 每個元素 MUST 為單一語句（db.py 逐句 cur.execute，不走 executescript）。
@@ -254,18 +302,22 @@ MIGRATIONS = {
     3: [s.strip() for s in CPAP_DDL.split(";") if s.strip()],
     # v5：zip 容器指紋快篩欄位（App 端專用，Python CLI 不填；排除於差分對帳）
     4: ["ALTER TABLE source_documents ADD COLUMN container_sha256 TEXT"],
+    # v6：Apple 每日彙總表＋以既有 raw 一次性回填（同一份聚合 SQL）
+    5: ([s.strip() for s in APPLE_DAILY_DDL.split(";") if s.strip()]
+        + BACKFILL_STATEMENTS),
 }
 
 # 帶指紋合併語意的健保紀錄表（碰撞防禦與 superseded 偵測作用對象）
 FP_TABLES = ["encounters", "lab_results", "reports", "immunizations",
              "body_measurements", "cancer_screenings"]
 ALL_TABLES = ["profiles", "source_documents", "medications",
-              "apple_records", "apple_workouts",
+              "apple_records", "apple_workouts", "apple_daily",
               "cpap_daily", "cpap_events", "cpap_oximetry"] + FP_TABLES
 
 # 帶 quality_flags 欄位的全部資料表（品質報告逐表掃描）。順序 MUST 與 JS 的
 # QUALITY_FLAG_TABLES 一致：品質報告在兩端要逐位元組同構。漏表的後果是該表
 # 的旗標永遠不出現在報告上，而畫面照樣顯示「品質旗標：無」。
 QUALITY_FLAG_TABLES = FP_TABLES + ["medications", "apple_records",
-                                   "apple_workouts", "cpap_daily",
-                                   "cpap_events", "cpap_oximetry"]
+                                   "apple_workouts", "apple_daily",
+                                   "cpap_daily", "cpap_events",
+                                   "cpap_oximetry"]

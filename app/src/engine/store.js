@@ -12,7 +12,7 @@ export const FP_TABLES = ["encounters", "lab_results", "reports", "immunizations
 // QUALITY_FLAG_TABLES 一致（品質報告要逐位元組同構）。
 // tests/engine/table_coverage.test.mjs 以 DDL 的欄位對帳釘住。
 export const QUALITY_FLAG_TABLES = [...FP_TABLES, "medications",
-  "apple_records", "apple_workouts",
+  "apple_records", "apple_workouts", "apple_daily",
   "cpap_daily", "cpap_events", "cpap_oximetry"];
 
 export class SourceRequired extends Error {}
@@ -165,7 +165,7 @@ export class EngineStore {
     const out = {};
     for (const t of ["profiles", "source_documents", "encounters", "medications",
       "lab_results", "reports", "immunizations", "body_measurements",
-      "cancer_screenings", "apple_records", "apple_workouts",
+      "cancer_screenings", "apple_records", "apple_workouts", "apple_daily",
       "cpap_daily", "cpap_events", "cpap_oximetry"]) {
       const [{ c }] = await this.driver.select(`SELECT COUNT(*) c FROM ${t}`);
       out[t] = c;

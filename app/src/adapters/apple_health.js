@@ -8,6 +8,7 @@ import { Sha256 } from "../engine/sha256.js";
 import { buildIncremental } from "../engine/quality_report.js";
 import { isZip, looksLikeHealthData, findZipXmlMember, zipMemberStream }
   from "../engine/bytesource.js";
+import { importAggregateStatements } from "../engine/aggregate.js";
 
 export const ADAPTER_VERSION = "1.0.0";
 
@@ -202,6 +203,11 @@ async function parseAndInsert(driver, stream, { pid, docId, progress, totalBytes
 // 統計鏡像＋收尾＋增量報告（兩條路徑共用；語意同 Python：0 時不建鍵，
 // import_stats 序列化才對得上）
 async function finishImport(store, docId, parsed, sourceInfo, messages) {
+  // 每日彙總（apple-health-import「匯入時每日彙總」）：交易終點、以本次
+  // 觸及的鍵從全部 raw 列重算（增量日不縮小）。彙總失敗讓交易整筆回滾。
+  for (const { sql, params } of importAggregateStatements()) {
+    await store.driver.execute(sql, Array(params).fill(docId));
+  }
   if (parsed.insertedRecords) {
     store.stats.inserted.apple_records = parsed.insertedRecords;
   }

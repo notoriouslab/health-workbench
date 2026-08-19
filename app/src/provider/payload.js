@@ -13,7 +13,7 @@ const MEASURE_TYPES = ["體重", "BMI", "體脂率", "收縮壓", "舒張壓", "
 
 const TABLES = ["profiles", "source_documents", "encounters", "medications",
   "lab_results", "reports", "immunizations", "body_measurements",
-  "cancer_screenings", "apple_records", "apple_workouts",
+  "cancer_screenings", "apple_records", "apple_workouts", "apple_daily",
   "cpap_daily", "cpap_events", "cpap_oximetry"];
 
 // CPAP 逐筆事件的 payload 上限，以**晚**為單位而非筆數（change

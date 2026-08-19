@@ -18,7 +18,7 @@ import { seedCpapDoc, cpapCounts } from "../helpers/cpap_seed.mjs";
 
 const ALL_TABLES = ["profiles", "source_documents", "encounters", "medications",
   "lab_results", "reports", "immunizations", "body_measurements",
-  "cancer_screenings", "apple_records", "apple_workouts",
+  "cancer_screenings", "apple_records", "apple_workouts", "apple_daily",
   "cpap_daily", "cpap_events", "cpap_oximetry"];
 
 async function snapshot(d) {
@@ -284,6 +284,11 @@ test("reattribute 全搬：目標無衝突時筆數對帳、來源清空、doc �
   const r = await reattributeSourceDocument(d, ap, c);
   assert.equal(r.moved.apple_records, 1);
   assert.equal(r.merged.apple_records, 0);
+  // apple_daily（KEY_DUP 手動接線項）：漏接的症狀是「搬移 0 筆看似成功」
+  assert.equal(r.moved.apple_daily, 1, "彙總列必須跟著改歸屬");
+  const [{ dc }] = await d.select(
+    "SELECT count(*) dc FROM apple_daily WHERE profile_id=?", [c]);
+  assert.equal(dc, 1, "彙總列 profile_id 必須改掛到目標成員");
   assert.deepEqual(r.binding, { sourceUnbound: false, targetBound: false },
     "Apple doc 不動綁定");
   const [doc] = await d.select(

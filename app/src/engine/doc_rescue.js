@@ -13,7 +13,7 @@ import { FP_TABLES } from "./store.js";
 // 順序：medications 先於其母表 encounters；cpap 三表彼此無 FK 依賴。
 export const DOC_DATA_TABLES = [
   "medications", ...FP_TABLES, "apple_records", "apple_workouts",
-  "cpap_daily", "cpap_events", "cpap_oximetry",
+  "apple_daily", "cpap_daily", "cpap_events", "cpap_oximetry",
 ];
 
 // 健保家族判定：LIKE 'nhi_%' 的底線是萬用字元，改用前綴比對
@@ -36,6 +36,9 @@ const KEY_MATCH = {
   // 值（所以要比對數值才算重複），而同一台機器同一晚的 CPAP 摘要只會有一份，
   // 比對鍵即是匯入時的去重語意（匯入就是 UNIQUE 衝突即略過），也才符合
   // profile-management spec 要求的「鏡像匯入去重規則」。
+  // apple_daily：鏡像 UNIQUE(profile_id, type_zh, day, source_name)。
+  // 只比對鍵不比對數值（同 CPAP 理由：同鍵的彙總只會有一份）。
+  apple_daily: "x.type_zh=s.type_zh AND x.day=s.day AND x.source_name=s.source_name",
   cpap_daily: "x.device=s.device AND x.summary_date=s.summary_date",
   cpap_events: "x.device=s.device AND x.start_ts=s.start_ts"
     + " AND x.event_type=s.event_type",
@@ -44,7 +47,7 @@ const KEY_MATCH = {
 
 // 以自然去重鍵搬移的表（非指紋表）：apple 兩表與 CPAP 三表共用同一段邏輯，
 // 同去重鍵的來源列刪除、其餘改掛目標成員。
-const KEY_DUP_TABLES = ["apple_records", "apple_workouts",
+const KEY_DUP_TABLES = ["apple_records", "apple_workouts", "apple_daily",
   "cpap_daily", "cpap_events", "cpap_oximetry"];
 
 async function getDoc(driver, docId) {

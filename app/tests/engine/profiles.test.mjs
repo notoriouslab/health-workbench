@@ -43,6 +43,9 @@ async function seedMember(driver, pid, tag) {
     "INSERT INTO apple_workouts(profile_id,doc_id,activity,start_ts,end_ts)"
     + " VALUES(?,?,?,?,?)", [pid, docId, "跑步", `2026-01-01T00:00:0${pid}`,
       "2026-01-01T01:00:00"]);
+  await driver.execute(
+    "INSERT INTO apple_daily(profile_id,doc_id,type_zh,day,source_name,n)"
+    + " VALUES(?,?,?,?,?,?)", [pid, docId, "步數", "2026-01-01", "", 1]);
   // CPAP 三表：doc_id 有 REFERENCES source_documents，若清單漏了它們，
   // 刪除成員會在 DELETE source_documents 那步 FK 失敗（2026-08-13 實測）
   await driver.execute(

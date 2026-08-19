@@ -2,7 +2,31 @@
 // 驗收＝兩邊空庫正規化 schema dump 全等（tests/store/schema_parity.test.mjs）。
 // 修改 DDL 時 MUST 同步修改 Python 版並重跑 parity 測試。
 
-export const SCHEMA_VERSION = 5;
+import { backfillStatements } from "../engine/aggregate.js";
+
+export const SCHEMA_VERSION = 6;
+
+// Apple 每日彙總表（v6 新增）：同時作為初始 DDL 與 5→6 遷移的單一來源。
+// UNIQUE 鍵即 UPSERT 的 ON CONFLICT 目標；source_name NOT NULL DEFAULT ''
+// （raw 的 NULL 來源以空字串入鍵，鍵不含 NULL）。統一存五統計，個別型別
+// 取用哪個統計屬檢視層（health-database spec「Apple 每日彙總表」）。
+const APPLE_DAILY_DDL = `
+CREATE TABLE IF NOT EXISTS apple_daily(
+    id INTEGER PRIMARY KEY,
+    profile_id INTEGER NOT NULL REFERENCES profiles(id),
+    doc_id INTEGER NOT NULL REFERENCES source_documents(id),
+    type_zh TEXT NOT NULL,
+    day TEXT NOT NULL,
+    source_name TEXT NOT NULL DEFAULT '',
+    n INTEGER NOT NULL,
+    sum_v REAL,
+    min_v REAL,
+    max_v REAL,
+    avg_v REAL,
+    extra_json TEXT,
+    quality_flags TEXT NOT NULL DEFAULT '',
+    UNIQUE(profile_id, type_zh, day, source_name));
+`;
 
 // CPAP 三表（v4 新增）：同時作為初始 DDL 與 3→4 遷移的單一來源，兩處
 // 手寫會漂移（migration 2 即為重複語句維護的前例）。欄位選取以兩台機器
@@ -246,7 +270,8 @@ CREATE TABLE IF NOT EXISTS apple_workouts(
     source_name TEXT,
     quality_flags TEXT NOT NULL DEFAULT '',
     UNIQUE(profile_id, activity, start_ts, end_ts, source_name));
-${CPAP_DDL}`;
+${CPAP_DDL}
+${APPLE_DAILY_DDL}`;
 
 // 前向遷移：{來源版本: [SQL, ...]}，逐版執行至 SCHEMA_VERSION（同 Python）。
 // 每個元素 MUST 為單一語句（Python 端逐句 cur.execute，不走 executescript）。
@@ -258,6 +283,9 @@ export const MIGRATIONS = {
   // v5：zip 容器指紋快篩欄位（僅 zip 來源填值，非 zip 為 NULL；
   // App 端快篩專用，排除於 Python 差分對帳）
   4: ["ALTER TABLE source_documents ADD COLUMN container_sha256 TEXT"],
+  // v6：Apple 每日彙總表＋以既有 raw 一次性回填（同一份聚合 SQL，
+  // 見 engine/aggregate.js；raw 資料逐位元組不變）
+  5: [...splitStatements(APPLE_DAILY_DDL), ...backfillStatements()],
 };
 
 export class SchemaTooNew extends Error {}

@@ -200,7 +200,7 @@ class Store:
         for t in ["profiles", "source_documents", "encounters", "medications",
                   "lab_results", "reports", "immunizations", "body_measurements",
                   "cancer_screenings", "apple_records", "apple_workouts",
-                  "cpap_daily", "cpap_events", "cpap_oximetry"]:
+                  "apple_daily", "cpap_daily", "cpap_events", "cpap_oximetry"]:
             out[t] = cur.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
         return out
 

@@ -165,6 +165,10 @@ class AppleHealthAdapter:
                 print(f"此檔案已於 {imported_at} 匯入過（SHA-256 相同），跳過。")
                 return 0
             stats = self._parse(store, opener, pid, doc_id)
+            # 每日彙總（apple-health-import spec）：與 JS 端同一份 SQL
+            from src.store.schema import IMPORT_AGGREGATE_STATEMENTS
+            for stmt in IMPORT_AGGREGATE_STATEMENTS:
+                store.con.execute(stmt["sql"], [doc_id] * stmt["params"])
             store.finalize_import(doc_id)
             store.commit()
             report = build_incremental(

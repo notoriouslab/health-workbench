@@ -10,7 +10,7 @@
 // tests/engine/table_coverage.test.mjs 以 DDL 對帳釘住。
 export const PROFILE_DATA_TABLES = [
   "medications", "encounters", "lab_results", "reports", "immunizations",
-  "body_measurements", "cancer_screenings", "apple_records", "apple_workouts",
+  "body_measurements", "cancer_screenings", "apple_records", "apple_workouts", "apple_daily",
   "cpap_daily", "cpap_events", "cpap_oximetry",
   "source_documents",
 ];

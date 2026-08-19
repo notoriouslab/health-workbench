@@ -43,6 +43,9 @@ const DATE_RANGE_COLUMNS = [
   ["encounters", "date"], ["lab_results", "test_date"],
   ["immunizations", "date"], ["body_measurements", "check_date"],
   ["apple_records", "start_ts"],
+  // apple_daily 納入的理由：raw 清理後 apple_records 的範圍會縮水，
+  // Apple 資料的完整期間要由彙總表扛（change apple-daily-aggregates）
+  ["apple_daily", "day"],
   ["cpap_daily", "summary_date"], ["cpap_events", "session_date"],
   ["cpap_oximetry", "session_date"],
 ];
