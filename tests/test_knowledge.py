@@ -108,3 +108,55 @@ def test_drug_lookup_offline_no_cache(tmp_path):
     lk = DrugLookup(tmp_path / "none.sqlite")
     assert lk.lookup("XX00000001") is None and lk.meta() is None
     lk.close()
+
+
+# ---- 身體數值參考標準（display-revamp-bands-cleanup T5）----
+
+def test_body_refs_load_ok():
+    from src.knowledge.body_refs import load_body_refs
+    entries = load_body_refs()
+    # 第一版範圍寫死：血壓兩條線＋BMI 一條帶（範圍回潮在這裡轉紅）
+    kinds = sorted((e["type_zh"], e["kind"]) for e in entries)
+    assert kinds == [("BMI", "band"), ("收縮壓", "line"), ("舒張壓", "line")]
+    for e in entries:
+        assert e["source_url"].startswith("https://")
+        assert e["cited_date"]
+
+
+def test_body_refs_missing_field_fails(tmp_path):
+    from src.knowledge.body_refs import BodyRefsError, load_body_refs
+    bad = tmp_path / "refs.yaml"
+    bad.write_text(
+        "- normalized_name: 'X'\n  type_zh: '收縮壓'\n  kind: 'line'\n"
+        "  value: 130\n  label: '參考 130'\n  source_name: '來源'\n"
+        "  source_url: 'https://example.gov.tw'\n",  # 缺 cited_date
+        encoding="utf-8")
+    import pytest
+    with pytest.raises(BodyRefsError):
+        load_body_refs(bad)
+
+
+def test_body_refs_band_needs_bounds(tmp_path):
+    from src.knowledge.body_refs import BodyRefsError, load_body_refs
+    bad = tmp_path / "refs.yaml"
+    bad.write_text(
+        "- normalized_name: 'X'\n  type_zh: 'BMI'\n  kind: 'band'\n"
+        "  lo: 18.5\n  label: 'x'\n  source_name: '來源'\n"
+        "  source_url: 'https://example.gov.tw'\n  cited_date: '2026-08-19'\n",
+        encoding="utf-8")
+    import pytest
+    with pytest.raises(BodyRefsError):
+        load_body_refs(bad)
+
+
+def test_body_refs_forbidden_words(tmp_path):
+    from src.knowledge.body_refs import BodyRefsError, load_body_refs
+    bad = tmp_path / "refs.yaml"
+    bad.write_text(
+        "- normalized_name: 'X'\n  type_zh: '收縮壓'\n  kind: 'line'\n"
+        "  value: 130\n  label: '數值正常'\n  source_name: '來源'\n"
+        "  source_url: 'https://example.gov.tw'\n  cited_date: '2026-08-19'\n",
+        encoding="utf-8")
+    import pytest
+    with pytest.raises(BodyRefsError):
+        load_body_refs(bad)

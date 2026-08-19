@@ -28,7 +28,7 @@ export function exportFileName(memberName, dateStr, ext = "html") {
 }
 
 export function createViewer({ getDriver, getDbPath, getProfileId,
-  getExportStartDir, labEntries, onNotify }) {
+  getExportStartDir, labEntries, bodyRefs = [], onNotify }) {
   let assets = null;
   let lastHtml = null;
   let lastPayload = null;
@@ -99,6 +99,7 @@ export function createViewer({ getDriver, getDbPath, getProfileId,
     const payload = await buildPayload(driver, {
       profileId,
       knowledgeEntries: labEntries,
+      bodyRefs,
       drugCachePath: await drugCachePath(),
       today: localDateISO(),
     });

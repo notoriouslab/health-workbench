@@ -26,11 +26,13 @@ def cmd_status(args):
 
 def cmd_quality(args):
     from src.knowledge.drugs import DrugLookup
+    from src.knowledge.body_refs import load_body_refs
     from src.knowledge.labs import stale_entries
     from src.quality.quality_report import build_full, render_text
     from src.store.db import Store
     store = Store(args.db)
-    stale = stale_entries()
+    # 過時提醒對兩類 knowledge 一體適用：檢驗條目＋身體數值參考標準
+    stale = stale_entries() + stale_entries(load_body_refs())
     lookup = DrugLookup(args.db)
     meta = lookup.meta()
     lookup.close()

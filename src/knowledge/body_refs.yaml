@@ -1,0 +1,33 @@
+# 身體數值參考標準（change display-revamp-bands-cleanup D7）
+# 每條目必填欄位缺失即建置失敗；顯示時帶來源與引用日期。
+# 範圍刻意收窄：僅血壓（居家判準）與 BMI。腰圍（標準分性別而系統未收
+# 性別欄）、血氧與心率（無合適通用官方標準）、體重（無通用標準，BMI
+# 已涵蓋）第一版不加——擴充前先補齊官方出處再走同一套紀律。
+
+- normalized_name: '血壓收縮壓居家參考'
+  type_zh: '收縮壓'
+  kind: 'line'
+  value: 130
+  label: '參考 130'
+  source_name: '2022 台灣高血壓治療指引之居家血壓判準（國民健康署「血壓要管理 722在家量」轉述）'
+  source_url: 'https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=4705&pid=16550&sid=16573'
+  cited_date: '2026-08-19'
+
+- normalized_name: '血壓舒張壓居家參考'
+  type_zh: '舒張壓'
+  kind: 'line'
+  value: 80
+  label: '參考 80'
+  source_name: '2022 台灣高血壓治療指引之居家血壓判準（國民健康署「血壓要管理 722在家量」轉述）'
+  source_url: 'https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=4705&pid=16550&sid=16573'
+  cited_date: '2026-08-19'
+
+- normalized_name: 'BMI參考帶'
+  type_zh: 'BMI'
+  kind: 'band'
+  lo: 18.5
+  hi: 24
+  label: '18.5-24'
+  source_name: '衛生福利部國民健康署（健康體位 BMI 18.5-24）'
+  source_url: 'https://health99.hpa.gov.tw/onlineQuiz/bmi'
+  cited_date: '2026-08-19'

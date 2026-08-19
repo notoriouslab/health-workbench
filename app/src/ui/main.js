@@ -206,6 +206,14 @@ async function loadLabEntries() {
   return res.json();
 }
 
+// 身體數值參考線條目（載入失敗回空清單＝不畫參考線，檢視功能不受影響）
+async function loadBodyRefs() {
+  try {
+    const res = await fetch("./knowledge/body_refs.json");
+    return await res.json();
+  } catch { return []; }
+}
+
 function dialogOpen(opts) {
   const dialog = window.__TAURI__.dialog;
   const open = dialog.open || dialog.default?.open;
@@ -221,6 +229,7 @@ function setTab(name) {
 
 async function wireUi() {
   const labEntries = await loadLabEntries();
+  const bodyRefs = await loadBodyRefs();
   document.getElementById("tab-btn-import").addEventListener("click", () => setTab("import"));
   document.getElementById("tab-btn-viewer").addEventListener("click", () => setTab("viewer"));
   app.viewer = createViewer({
@@ -229,6 +238,7 @@ async function wireUi() {
     getProfileId: () => app.currentProfileId,
     getExportStartDir: () => dialogStartDir("export"),
     labEntries,
+    bodyRefs,
     onNotify: notify,
   });
   app.history = createHistory({
@@ -397,8 +407,9 @@ async function wireUi() {
   });
   // opener 插件到位後改直接開瀏覽器（2026-08-11 指示；剪貼簿方案退場），
   // 開啟失敗回退複製，確保任何情況都有路可走
-  document.getElementById("gh-open-btn").addEventListener("click", async () => {
-    const url = "https://github.com/notoriouslab/health-workbench";
+  // 開瀏覽器（app-shell「檢查新版入口」：App 本體零連網，連網只發生在
+  // 使用者主動開瀏覽器；不做自動版本檢查）
+  const openExternal = async (url) => {
     try {
       await window.__TAURI__.opener.openUrl(url);
     } catch {
@@ -409,7 +420,11 @@ async function wireUi() {
         notify(`請手動前往：${url}`);
       }
     }
-  });
+  };
+  document.getElementById("gh-open-btn").addEventListener("click", () =>
+    openExternal("https://github.com/notoriouslab/health-workbench"));
+  document.getElementById("check-update-btn").addEventListener("click", () =>
+    openExternal("https://github.com/notoriouslab/health-workbench/releases"));
 
   // 版本標示（2026-08-13 走查：安裝版與 dev 版共用同一個資料目錄，開錯版本
   // 會建出舊 schema 的庫而症狀像功能壞掉）。版號兩者相同，光看版號分不出來，
