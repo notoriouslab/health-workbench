@@ -11,6 +11,7 @@ import path from "node:path";
 import vm from "node:vm";
 import { NodeDriver } from "../../src/store/node_driver.js";
 import { initSchema } from "../../src/store/schema.js";
+import { importAggregateStatements } from "../../src/engine/aggregate.js";
 import { createProfile } from "../../src/engine/profiles.js";
 import { buildPayload } from "../../src/provider/payload.js";
 import { makeDocument, findAll } from "../helpers/mini_dom.mjs";
@@ -79,6 +80,11 @@ async function shapePayload({ nullLabDate = false, staleAll = false,
   await d.batchInsert("apple_records",
     ["profile_id", "doc_id", "type", "type_zh", "start_ts", "end_ts", "value_numeric",
       "value_normalized", "value_text", "unit", "source_name", "quality_flags"], appleRows);
+  // 直插 raw 不走 adapter，彙總表要照匯入的真實路徑補跑同一份聚合語句
+  // （payload 的活動序列讀 apple_daily，change apple-daily-aggregates）
+  for (const { sql, params } of importAggregateStatements()) {
+    await d.execute(sql, Array(params).fill(doc.apple));
+  }
   // 檢驗：3 筆（可選一筆 null 日期）
   const labDates0 = staleAll
     ? [iso(T - day(2400)), iso(T - day(2000)), iso(T - day(1600))]

@@ -19,13 +19,15 @@ MEASURE_TYPES = ["體重", "BMI", "體脂率", "收縮壓", "舒張壓", "心率
 
 
 def daily_counting_series(store, type_zh):
-    """計數型：每日各來源分別加總後取單日最大值（防 iPhone/Watch 雙計）。"""
+    """計數型：讀每日彙總表取單日最大值（防 iPhone/Watch 雙計）。
+
+    與舊的 raw 查詢「(日,來源) SUM → 跨來源 MAX」代數等價（apple_daily 的
+    sum_v 即 (日,來源) SUM）；epoch 排除由聚合時寫入的同名旗標承接。
+    """
     rows = store.con.execute(f"""
-        WITH daily AS (
-          SELECT substr(start_ts,1,10) d, source_name, SUM(COALESCE(value_normalized, value_numeric)) v
-          FROM apple_records WHERE type_zh=? AND {TREND_EXCLUDE}
-          GROUP BY d, source_name)
-        SELECT d, MAX(v) FROM daily GROUP BY d ORDER BY d""", (type_zh,)).fetchall()
+        SELECT day d, MAX(sum_v) FROM apple_daily
+        WHERE type_zh=? AND {TREND_EXCLUDE}
+        GROUP BY day ORDER BY day""", (type_zh,)).fetchall()
     return [[r[0], round(r[1], 1)] for r in rows if r[1] is not None]
 
 

@@ -105,13 +105,15 @@ export function pyRound(v, digits) {
   return r / f;
 }
 
+// 活動類改讀彙總表（change apple-daily-aggregates）：MAX(sum_v) GROUP BY day
+// 與舊查詢「(日,來源) SUM → 跨來源 MAX」代數等價（tests/provider/
+// activity_switch.test.mjs 以雙查詢逐日全等實證，並以 EXPLAIN 斷言不再
+// 全表掃描 apple_records）。epoch 排除語意由聚合時寫入的同名旗標承接。
 async function dailyCountingSeries(driver, typeZh, profileId) {
   const rows = await driver.select(`
-    WITH daily AS (
-      SELECT substr(start_ts,1,10) d, source_name, SUM(COALESCE(value_normalized, value_numeric)) v
-      FROM apple_records WHERE profile_id=? AND type_zh=? AND ${TREND_EXCLUDE}
-      GROUP BY d, source_name)
-    SELECT d, MAX(v) v FROM daily GROUP BY d ORDER BY d`, [profileId, typeZh]);
+    SELECT day d, MAX(sum_v) v FROM apple_daily
+    WHERE profile_id=? AND type_zh=? AND ${TREND_EXCLUDE}
+    GROUP BY day ORDER BY day`, [profileId, typeZh]);
   return rows.filter(r => r.v !== null).map(r => [r.d, pyRound(r.v, 1)]);
 }
 
