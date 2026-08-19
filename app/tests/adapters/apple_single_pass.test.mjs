@@ -62,9 +62,11 @@ test("zip 與 XML 直接匯入：內容指紋相同、逐表筆數相同、跨�
   }
   const [{ sha256: viaZip }] = await a.select(
     "SELECT sha256 FROM source_documents");
-  const [{ sha256: viaXml }] = await b.select(
-    "SELECT sha256 FROM source_documents");
+  const [{ sha256: viaXml, container_sha256: xmlContainer }] = await b.select(
+    "SELECT sha256, container_sha256 FROM source_documents");
   assert.equal(viaZip, viaXml, "zip 解壓內容與 XML 檔的指紋必須相同");
+  assert.equal(xmlContainer, null,
+    "非 zip 來源的 container_sha256 必須為 NULL（health-database spec）");
 
   // 跨格式判重：庫 A 已收 zip，再餵原 XML 檔 → 內容指紋命中
   const rCross = await appleHealthAdapter.importSource(
