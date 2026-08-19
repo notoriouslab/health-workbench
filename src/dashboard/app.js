@@ -627,6 +627,38 @@
     </div>`;
   }
 
+  /* ---------- 列印用藥清單（print-only DOM ＋ @media print） ----------
+     常駐在用藥分頁裡的隱藏清單區：平時 .print-sheet 是 display:none，
+     @media print 時樣式表把介面其餘部分關掉、只留這一區，所以按鈕呼叫
+     window.print() 就能印出清單，不開新視窗、不產生檔案、不連網。
+     範圍＝「藥品」與「中醫用藥」兩類（診療項目不是藥，不進清單）；
+     每列的最近處方日期與用藥卡標頭的「最近」同一筆（items[0].date，
+     payload 的 medications 已按就醫日期 DESC 排序）。
+     兩類都沒有資料時整區不渲染（不留空清單）。 */
+  const PRINT_CATS = [["drug", "藥品"], ["tcm", "中醫用藥"]];
+
+  function MedPrintSheet({ groups }) {
+    const secs = PRINT_CATS
+      .map(([c, label]) => [label, groups.filter((g) => medCategory(g.m) === c)])
+      .filter(([, gs]) => gs.length);
+    if (!secs.length) return null;
+    const ver = DATA.meta.drug_cache ? DATA.meta.drug_cache.updated_at : "未建快取";
+    return html`<div class="print-sheet">
+      <h2>用藥清單</h2>
+      <p class="note">成員：${DATA.meta.profile}｜產生日期：${DATA.meta.generated_at}</p>
+      <p class="note">藥品資訊來自健保用藥品項檔（版本 ${ver}）</p>
+      ${secs.map(([label, gs]) => html`<div>
+        <h3>${label}（${gs.length}）</h3>
+        <table><tr><th>名稱</th><th>成分</th><th>最近處方日期</th></tr>
+          ${gs.map((g) => html`<tr>
+            <td>${g.m.drug_zh || g.m.order_name}</td>
+            <td>${g.m.ingredient || ""}</td>
+            <td class="dt">${g.items[0].date}</td></tr>`)}
+        </table></div>`)}
+      <p class="note">本清單僅為就醫溝通輔助，不含醫療判斷</p>
+    </div>`;
+  }
+
   function Meds({ focus, go }) {
     const groups = useMemo(() => {
       const g = {};
@@ -651,12 +683,15 @@
         ${MED_CATS.map(([c, label]) => html`<button
           class="catbtn ${cat === c ? "on" : ""}"
           onClick=${() => { setCat(c); setOpenKey(null); }}>${label}（${byCat(c).length}）</button>`)}
+        ${!window.HWB_EPUB && html`<button class="catbtn"
+          onClick=${() => window.print()}>列印用藥清單</button>`}
       </div>
       <p class="note">藥品資訊來自健保用藥品項檔（版本
         ${DATA.meta.drug_cache ? DATA.meta.drug_cache.updated_at : "未建快取"}）；
         點列展開處方時間軸。</p>
       ${byCat(cat).map((g) => html`<${MedGroup} g=${g} open=${openKey === g.key} go=${go}
         onToggle=${() => setOpenKey(openKey === g.key ? null : g.key)} />`)}
+      <${MedPrintSheet} groups=${groups} />
     </section>`;
   }
 

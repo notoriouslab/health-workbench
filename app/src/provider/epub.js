@@ -79,6 +79,9 @@ function cdata(text, what) {
   return `<![CDATA[\n${text}\n]]>`;
 }
 
+// HWB_EPUB 旗標必須先於 app.js 執行（app.js 一載入就渲染），讓檢視層知道
+// 自己在 EPUB 閱讀器裡而不渲染列印鈕——閱讀器的 window.print 語意不受控。
+// 旗標內容無 XML 特殊字元也無 ]]>，不需要 CDATA。App 與 HTML 匯出不設旗標。
 function dashboard(payload, assets) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
@@ -94,6 +97,7 @@ function dashboard(payload, assets) {
 Android 的 Reasily 開啟；在電腦上也可以改看「匯出單檔 HTML」產生的檔案，
 內容相同。</p></div>
 <script type="application/json" id="hwb-data">${toEmbeddedJson(payload)}</script>
+<script>window.HWB_EPUB=true</script>
 <script>${cdata(assets.vendor.join("\n"), "vendor")}</script>
 <script>${cdata(assets.appJs, "app.js")}</script>
 </body>

@@ -123,3 +123,24 @@ header .disclaimer b { color: var(--warn); }
     -webkit-overflow-scrolling: touch; }
   nav { gap: 6px; }
 }
+
+/* 列印用藥清單：清單區平時不顯示，列印時反過來只留它。
+   隱藏規則走「通往清單那條路的兄弟一律關掉」——標頭（含導覽與搜尋）整塊
+   關；當前分頁 section 內除清單外的子節點全關（卡片、分類鈕列、時間軸都是
+   section 的直系子節點）。用 display:none 而非 visibility:hidden，才不會留下
+   已排版但看不見的內容變成空白頁。 */
+.print-sheet { display: none; }
+/* 隱藏規則以 body:has(.print-sheet) 為護欄：只有清單在 DOM（＝用藥分頁）
+   時才接管列印；其他分頁按瀏覽器列印仍印一般頁面，不會印出空白。
+   不支援 :has 的舊瀏覽器整組不生效＝優雅降級成印一般頁面。 */
+@media print {
+  body:has(.print-sheet) { padding: 0; max-width: none; background: #fff; color: #000; }
+  body:has(.print-sheet) header { display: none !important; }
+  body:has(.print-sheet) section > *:not(.print-sheet) { display: none !important; }
+  .print-sheet { display: block; }
+  .print-sheet h2 { margin-top: 0; }
+  .print-sheet .note { color: #000; }
+  .print-sheet table { page-break-inside: auto; }
+  .print-sheet tr { page-break-inside: avoid; }
+  .print-sheet th, .print-sheet td { border-bottom: 0.5px solid #999; }
+}

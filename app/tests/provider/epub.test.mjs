@@ -205,6 +205,22 @@ test("含 CPAP 資料的成員：EPUB 仍合法且睡眠呼吸資料真的在裡
   assert.equal(back.cpap.daily.length, payload.cpap.daily.length);
 });
 
+// change drug-info-and-lab-refband T4/design D4：閱讀器的 window.print 語意
+// 不受控，EPUB 骨架用旗標讓檢視層不渲染列印鈕。旗標晚於 app.js 就等於沒設
+// （app.js 一載入就渲染），所以位置也要釘住；單檔 HTML 反過來 MUST NOT 有。
+test("EPUB 注入 HWB_EPUB 旗標且位置先於 app.js（單檔 HTML 不注入）", async () => {
+  const payload = await realPayload();
+  const assets = readAssets();
+  const r = inspect(writeEpub(await assembleEpub(payload, assets), "epubflag.epub"));
+  const flagAt = r.dashboard.indexOf("window.HWB_EPUB=true");
+  assert.notEqual(flagAt, -1, "EPUB 內容文件缺 window.HWB_EPUB=true");
+  const appAt = r.dashboard.indexOf(assets.appJs);
+  assert.notEqual(appAt, -1, "EPUB 內容文件缺 app.js 資產");
+  assert.ok(flagAt < appAt, `旗標位置（${flagAt}）必須先於 app.js（${appAt}）`);
+  assert.ok(!assemble(payload, assets).includes("window.HWB_EPUB=true"),
+    "單檔 HTML 不該設 EPUB 旗標（瀏覽器要能列印）");
+});
+
 test("epubIdentifier 穩定且隨成員與日期變動", () => {
   assert.equal(epubIdentifier("阿明", "2026-08-17"), epubIdentifier("阿明", "2026-08-17"));
   assert.notEqual(epubIdentifier("阿明", "2026-08-17"), epubIdentifier("阿華", "2026-08-17"));
