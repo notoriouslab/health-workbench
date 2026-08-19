@@ -8,6 +8,7 @@
 import { previewDocRescue, deleteSourceDocument, reattributeSourceDocument,
   previewBatchRescue, deleteSourceBatch, reattributeSourceBatch }
   from "../engine/doc_rescue.js";
+import { cleanupPreview, releaseSpace } from "../engine/cleanup.js";
 import { listProfiles } from "../engine/profiles.js";
 
 export const ADAPTER_LABELS = {
@@ -302,6 +303,67 @@ export function createHistory({ getDriver, getDbPath, onRescued, notify }) {
     }
   }
 
+  // 大小顯示：MB／GB 自動換檔（文案數字全程實算，NEVER 寫死容量）
+  function fmtBytes(n) {
+    if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(2)} GB`;
+    return `${Math.max(Math.round(n / 1024 ** 2), 1)} MB`;
+  }
+
+  // 釋放空間（health-database「釋放空間」）：頁內確認（MUST NOT 原生
+  // confirm）→ 引擎執行（對帳防線＋交易 DELETE＋交易外 VACUUM）→
+  // 回報實際前後大小 → 卡片與檢視頁刷新
+  function wireCleanup() {
+    const btn = box.querySelector("#cleanup-btn");
+    const inline = box.querySelector("#cleanup-inline");
+    if (!btn || !inline) return;
+    btn.addEventListener("click", async () => {
+      try {
+        const p = await cleanupPreview(getDriver());
+        if (!p.deletableRows) {
+          notify("沒有可清理的逐筆明細（彙總型別的明細已是空的）。");
+          return;
+        }
+        inline.innerHTML = `
+          <p><b>釋放空間</b></p>
+          <p>刪除已彙總的逐筆明細（${p.deletableRows.toLocaleString()} 筆）。
+            目前資料庫 ${esc(fmtBytes(p.sizeBytes))}，清理後約
+            ${esc(fmtBytes(p.estAfterBytes))}。</p>
+          <p>每日統計與所有圖表不受影響，但逐筆明細刪除後不會再回來。
+            整理過程需要約等於清理後資料庫大小的暫時磁碟空間。</p>
+          <p><button id="cleanup-go" type="button" class="primary">確認釋放空間</button>
+            <button id="cleanup-cancel" type="button" class="btn">取消</button></p>`;
+        inline.hidden = false;
+        inline.querySelector("#cleanup-cancel").addEventListener("click", () => {
+          inline.hidden = true; inline.innerHTML = "";
+        });
+        inline.querySelector("#cleanup-go").addEventListener("click", async () => {
+          const go = inline.querySelector("#cleanup-go");
+          go.disabled = true;
+          go.textContent = "清理中…";
+          try {
+            const r = await releaseSpace(getDriver());
+            inline.hidden = true; inline.innerHTML = "";
+            const sizeMsg = `${fmtBytes(r.beforeBytes)} → ${fmtBytes(r.afterBytes)}`;
+            if (r.vacuumError) {
+              notify(`已刪除 ${r.deletedRows.toLocaleString()} 筆逐筆明細，資料一致；`
+                + `但空間整理未完成（${r.vacuumError}），可稍後再按一次釋放空間重試。`, 12000);
+            } else {
+              notify(`釋放空間完成：刪除 ${r.deletedRows.toLocaleString()} 筆逐筆明細，`
+                + `資料庫 ${sizeMsg}。`, 12000);
+            }
+            await refresh();
+            await onRescued?.();
+          } catch (err) {
+            inline.hidden = true; inline.innerHTML = "";
+            notify(`釋放空間已中止：${String(err?.message || err)}`, 12000);
+          }
+        });
+      } catch (err) {
+        notify(`無法計算清理範圍：${String(err?.message || err)}`, 10000);
+      }
+    });
+  }
+
   async function refresh() {
     rescue = null; // 整卡重繪：收合進行中的面板，避免引用失效 doc
     const driver = getDriver();
@@ -355,9 +417,12 @@ export function createHistory({ getDriver, getDbPath, onRescued, notify }) {
       <summary>資料庫與匯入紀錄<span class="dt">（${docs.length} 筆來源檔案）</span></summary>
       <p class="dbline">全部資料：${esc(countText)}</p>
       <p class="dbline dt">資料庫位置：${esc(getDbPath())}</p>
+      <p class="dbline"><button id="cleanup-btn" type="button" class="btn">釋放空間…</button></p>
+      <div id="cleanup-inline" hidden></div>
       <div id="rescue-inline" hidden></div>
       ${groupHtml}`;
     box.open = wasOpen;
+    wireCleanup();
     for (const btn of box.querySelectorAll(".rescue-btn")) {
       btn.addEventListener("click", async () => {
         const docIds = btn.dataset.docs
