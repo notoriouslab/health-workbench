@@ -92,3 +92,44 @@ code:
   - docs/verification/karen_reality.md
   - README.md
 -->
+
+---
+### Requirement: 匯入時每日彙總
+
+Apple 匯入 MUST 於同一交易終點，以 SQL（INSERT…SELECT…GROUP BY
+＋UPSERT）更新 apple_daily：**以本次匯入觸及的鍵（該檔的每日 × 型別 ×
+來源組合）從全部 raw 列重算**該鍵統計，MUST NOT 只聚合本次 doc 的列
+（增量日會把既有統計縮小或使其過期）；聚合輸入 MUST 取正規化值優先（COALESCE(value_normalized,
+value_numeric)），與趨勢查詢同一判準。JS 與 Python 兩端 MUST 使用
+逐字相同的聚合 SQL（既有條文「新增彙總 MUST 以 SQL 計算而非兩語言
+各自實作」的延伸），差分對帳的逐表 dump 自動涵蓋 apple_daily。
+
+睡眠型別 MUST 按原始 value_text 識別字分組聚合每日分鐘數
+（四捨五入至整數分鐘）寫入 extra_json，MUST NOT 寫死階段清單
+（無 Watch 的匯出檔只有 InBed 等識別字，有 Watch 才有階段名）。
+
+彙總失敗 MUST 使整筆匯入回滾（彙總與 raw 寫入同一交易，不允許
+兩者不一致的中間態）。
+
+#### Scenario: 聚合與趨勢判準一致
+- **WHEN** 匯入含 unit_normalized 修正值的檔案
+- **THEN** apple_daily 的統計以正規化後的值計算
+
+#### Scenario: 睡眠按識別字聚合
+- **WHEN** 匯入含睡眠紀錄（任意識別字）的檔案
+- **THEN** extra_json 含每日各識別字的分鐘數，識別字原樣保留
+
+#### Scenario: 增量日重算
+- **WHEN** 先匯入含某日部分紀錄的檔案，再匯入對同日新增紀錄的檔案
+- **THEN** 該日該鍵的統計等於兩檔合計的 raw 列重算值（不縮小、不過期）
+
+#### Scenario: 兩端聚合一致
+- **WHEN** 同一檔分別經 JS 與 Python 匯入兩個空庫
+- **THEN** 兩庫的 apple_daily 逐表 dump 全等
+
+<!-- @trace
+source: apple-daily-aggregates
+updated: 2026-08-19
+code:
+  - docs/verification/apple_daily_aggregates.md
+-->

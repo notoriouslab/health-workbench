@@ -40,7 +40,6 @@ code:
 -->
 
 ---
-
 ### Requirement: 來源追溯
 
 每筆正規化資料 SHALL 帶 source_document 外鍵、來源節區/型別與
@@ -69,7 +68,6 @@ code:
 -->
 
 ---
-
 ### Requirement: 品質旗標貫穿
 quality_flags SHALL 為每筆資料的可累加欄位，聚合查詢與趨勢 MUST
 排除帶排除性旗標（epoch_placeholder_date、out_of_range）的資料，
@@ -157,9 +155,12 @@ code:
 source_documents SHALL 記錄每次匯入的統計（import_stats，JSON：
 inserted/skipped_dup/collisions）；adapter 於匯入收尾 MUST 寫入。
 schema 演進 SHALL 以 MIGRATIONS 前向遷移表實作，舊版資料庫開啟時
-自動逐版升級。現行 schema 版本為 **v5**（新增 `container_sha256`），
+自動逐版升級。現行 schema 版本為 **v6**（v5 新增 `container_sha256`、v6 新增
+`apple_daily` 表），
 JS 與 Python 兩端的 DDL、MIGRATIONS、SCHEMA_VERSION MUST 同步
 （schema parity 測試以空庫 dump 全等釘住）。
+v5 → v6 遷移 MUST 於遷移交易內以匯入用的同一份聚合 SQL 對既有
+raw 資料一次性回填 apple_daily，raw 資料逐位元組不變。
 
 **遷移前 MUST 自動產生升級前的資料庫快照**，且僅在偵測到既有版本低於
 程式版本時產生（全新資料庫不做）。快照失敗 MUST 中止遷移並明確告知
@@ -204,9 +205,13 @@ MAY 用於匯入當下的報告，MUST NOT 寫入 `source_documents`。
 - **WHEN** 一次多檔匯入完成
 - **THEN** 該批各列 import_stats 的 inserted 逐表相加，等於本次實際寫入
   資料庫的筆數（沒有任何一列裝著整批合計）
+#### Scenario: v5 庫升級並回填
+- **WHEN** v5 資料庫（含既有 apple_records）被新版開啟
+- **THEN** 自動建 apple_daily 並以既有 raw 列回填彙總，raw 資料逐位元組
+  不變
 
 <!-- @trace
-source: import-progress-and-single-pass
+source: apple-daily-aggregates
 updated: 2026-08-19
 code:
   - bin/hwb
@@ -215,9 +220,11 @@ code:
   - docs/verification/cpap_schema_v4_migration.md
   - docs/verification/batch_stats_double_count.md
   - docs/verification/import_single_pass.md
+  - docs/verification/apple_daily_aggregates.md
 -->
 
 ---
+
 ### Requirement: CPAP 資料表
 
 SHALL 含每日摘要、呼吸事件與睡眠血氧三張表，均帶 `profile_id` 與
@@ -244,4 +251,46 @@ updated: 2026-08-13
 code:
   - docs/verification/cpap_schema_v4_migration.md
   - docs/verification/cpap_resmed_adapter.md
+-->
+
+---
+### Requirement: Apple 每日彙總表
+
+SHALL 有 `apple_daily` 表：每日 × 型別 × 來源一列，鍵為
+`(profile_id, type_zh, day, source_name)`（UNIQUE；source_name
+NOT NULL DEFAULT ''，raw 的 NULL 來源以空字串寫入，鍵不含 NULL），欄位為
+`n`（原始筆數，用於「已收錄 N 筆」顯示與縮水防線）、`sum_v`／`min_v`／
+`max_v`／`avg_v`（統一五統計，個別型別的顯示取用哪個統計屬檢視層）、
+`extra_json`（睡眠的每日各識別字分鐘數；其餘型別為 NULL）、
+`doc_id`、`quality_flags`（day 早於 epoch 判準日的列 MUST 帶
+epoch_placeholder_date，趨勢讀取據此排除，語意同 raw 的既有旗標）。
+型別欄只存中文名 `type_zh`（29 個 WANTED
+中文名互異，唯一性由 adapter 的型別表保證）。
+
+**跨批次覆蓋語意**：同鍵新值 MUST 覆蓋舊值（Apple 匯出為全量歷史）；
+但新值的 n 小於既有 n 時 MUST NOT 無聲覆蓋：數值保留既有，並對該鍵
+追加 quality_flag `partial_reimport_skipped`（換機後以部分來源重新匯出
+不得蓋掉完整資料）。
+
+彙總涵蓋的 20 個型別與逐筆保留的 9 個型別，兩份清單 MUST 為程式常數
+且聯集恰等於 adapter 的 WANTED（無重複、無遺漏），以測試釘住。
+
+#### Scenario: 匯入後彙總表就緒
+- **WHEN** 完成一次 Apple 匯入
+- **THEN** apple_daily 含該檔 20 個彙總型別的每日 × 來源列，n 總和等於
+  該檔這些型別實際入庫的 raw 列數
+
+#### Scenario: 縮水防線
+- **WHEN** 先匯入完整檔，再匯入同期間但某日筆數較少的重新匯出檔
+- **THEN** 該日該鍵數值不變，quality_flags 含 partial_reimport_skipped
+
+#### Scenario: 分配表對帳
+- **WHEN** 比對彙總清單與逐筆保留清單的聯集
+- **THEN** 恰等於 WANTED 的 29 個型別，無重複、無遺漏
+
+<!-- @trace
+source: apple-daily-aggregates
+updated: 2026-08-19
+code:
+  - docs/verification/apple_daily_aggregates.md
 -->
