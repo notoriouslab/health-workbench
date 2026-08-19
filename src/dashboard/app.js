@@ -730,7 +730,10 @@
     }
     if (str.includes("[")) return null;
     const p = REF_PAIR.exec(str);
-    if (p) return { band: [parseFloat(p[1]), parseFloat(p[2])] };
+    if (p) {
+      const lo = parseFloat(p[1]), hi = parseFloat(p[2]);
+      return lo < hi ? { band: [lo, hi] } : null;   // 反向範圍＝形狀異常，不畫
+    }
     const n = REF_NUM.exec(str);
     if (n) {
       const upper = /[<≦≤]|以下/.test(str), lower = /[>≧≥]|以上/.test(str);
