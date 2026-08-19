@@ -275,22 +275,50 @@ AGGREGATE_TYPES = ["心率", "血氧", "呼吸速率", "睡眠", "步數", "步�
 
 IMPORT_AGGREGATE_STATEMENTS = [
   {
-    "sql": "INSERT INTO apple_daily(profile_id, doc_id, type_zh, day, source_name,\n  n, sum_v, min_v, max_v, avg_v, quality_flags)\nSELECT profile_id, MAX(doc_id), type_zh, substr(start_ts,1,10),\n  COALESCE(source_name,''),\n  COUNT(*), SUM(COALESCE(value_normalized, value_numeric)), MIN(COALESCE(value_normalized, value_numeric)), MAX(COALESCE(value_normalized, value_numeric)), AVG(COALESCE(value_normalized, value_numeric)),\n  CASE WHEN substr(start_ts,1,10) < '2000-01-01'\n    THEN 'epoch_placeholder_date' ELSE '' END\nFROM apple_records\nWHERE type_zh IN ('心率','血氧','呼吸速率','睡眠','步數','步行跑步距離','騎車距離','爬樓層數','活動能量','基礎能量','步行速度','步幅','雙腳支撐比例','步態不對稱比例','耳機音量暴露','飲水量','攝取熱量','攝取脂肪','攝取碳水','攝取蛋白質') AND (profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'')) IN (SELECT profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'') FROM apple_records WHERE doc_id = ?)\nGROUP BY profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'')\nON CONFLICT(profile_id, type_zh, day, source_name) DO UPDATE SET\n  n=excluded.n, sum_v=excluded.sum_v, min_v=excluded.min_v,\n  max_v=excluded.max_v, avg_v=excluded.avg_v, doc_id=excluded.doc_id,\n  quality_flags=excluded.quality_flags\n  WHERE excluded.n >= apple_daily.n",
+    "sql": "CREATE TEMP TABLE touched_keys AS SELECT DISTINCT profile_id, type_zh, substr(start_ts,1,10) AS day, COALESCE(source_name,'') AS source_name FROM apple_records WHERE doc_id = ?",
     "params": 1
   },
   {
-    "sql": "UPDATE apple_daily SET extra_json = (\n  SELECT json_group_object(ident, mins) FROM (\n    SELECT COALESCE(r.value_text,'') AS ident,\n      CAST(ROUND(SUM((julianday(r.end_ts) - julianday(r.start_ts)) * 1440))\n        AS INTEGER) AS mins\n    FROM apple_records r\n    WHERE r.profile_id = apple_daily.profile_id AND r.type_zh = '睡眠'\n      AND substr(r.start_ts,1,10) = apple_daily.day\n      AND COALESCE(r.source_name,'') = apple_daily.source_name\n    GROUP BY COALESCE(r.value_text,'')\n    ORDER BY COALESCE(r.value_text,'')))\nWHERE type_zh = '睡眠' AND (apple_daily.profile_id, apple_daily.type_zh, apple_daily.day, apple_daily.source_name) IN (SELECT profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'') FROM apple_records WHERE doc_id = ?)",
-    "params": 1
+    "sql": "CREATE TEMP TABLE touched_agg AS\nSELECT profile_id, type_zh, substr(start_ts,1,10) AS day,\n  COALESCE(source_name,'') AS source_name, MAX(doc_id) AS doc_id,\n  COUNT(*) AS n, SUM(COALESCE(value_normalized, value_numeric)) AS sum_v, MIN(COALESCE(value_normalized, value_numeric)) AS min_v,\n  MAX(COALESCE(value_normalized, value_numeric)) AS max_v, AVG(COALESCE(value_normalized, value_numeric)) AS avg_v\nFROM apple_records\nWHERE type_zh IN ('心率','血氧','呼吸速率','睡眠','步數','步行跑步距離','騎車距離','爬樓層數','活動能量','基礎能量','步行速度','步幅','雙腳支撐比例','步態不對稱比例','耳機音量暴露','飲水量','攝取熱量','攝取脂肪','攝取碳水','攝取蛋白質') AND (profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'')) IN (SELECT profile_id, type_zh, day, source_name FROM touched_keys)\nGROUP BY profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'')",
+    "params": 0
   },
   {
-    "sql": "UPDATE apple_daily\nSET quality_flags = CASE\n  WHEN quality_flags = '' THEN 'partial_reimport_skipped'\n  WHEN instr(quality_flags, 'partial_reimport_skipped') > 0 THEN quality_flags\n  ELSE quality_flags || ',partial_reimport_skipped' END\nWHERE rowid IN (\n  SELECT a.rowid FROM apple_daily a JOIN (\n    SELECT profile_id p, type_zh t, substr(start_ts,1,10) d,\n      COALESCE(source_name,'') s, COUNT(*) c\n    FROM apple_records\n    WHERE type_zh IN ('心率','血氧','呼吸速率','睡眠','步數','步行跑步距離','騎車距離','爬樓層數','活動能量','基礎能量','步行速度','步幅','雙腳支撐比例','步態不對稱比例','耳機音量暴露','飲水量','攝取熱量','攝取脂肪','攝取碳水','攝取蛋白質') AND (profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'')) IN (SELECT profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'') FROM apple_records WHERE doc_id = ?)\n    GROUP BY profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'')\n  ) g ON a.profile_id = g.p AND a.type_zh = g.t AND a.day = g.d\n    AND a.source_name = g.s\n  WHERE a.n > g.c)",
-    "params": 1
+    "sql": "CREATE TEMP TABLE sleep_mins AS\nSELECT profile_id, substr(start_ts,1,10) AS day,\n  COALESCE(source_name,'') AS source_name,\n  COALESCE(value_text,'') AS ident,\n  CAST(ROUND(SUM((julianday(end_ts) - julianday(start_ts)) * 1440))\n    AS INTEGER) AS mins\nFROM apple_records\nWHERE type_zh = '睡眠' AND (profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'')) IN (SELECT profile_id, type_zh, day, source_name FROM touched_keys)\nGROUP BY profile_id, substr(start_ts,1,10), COALESCE(source_name,''),\n  COALESCE(value_text,'')",
+    "params": 0
+  },
+  {
+    "sql": "INSERT INTO apple_daily(profile_id, doc_id, type_zh, day, source_name,\n  n, sum_v, min_v, max_v, avg_v, quality_flags)\nSELECT profile_id, doc_id, type_zh, day, source_name,\n  n, sum_v, min_v, max_v, avg_v,\n  CASE WHEN day < '2000-01-01'\n    THEN 'epoch_placeholder_date' ELSE '' END\nFROM touched_agg\nWHERE true -- 消除 parser 歧義：無此句時 ON 會被解析成 JOIN 條件（SQLite upsert 文件明載）\nON CONFLICT(profile_id, type_zh, day, source_name) DO UPDATE SET\n  n=excluded.n, sum_v=excluded.sum_v, min_v=excluded.min_v,\n  max_v=excluded.max_v, avg_v=excluded.avg_v, doc_id=excluded.doc_id,\n  quality_flags=excluded.quality_flags\n  WHERE excluded.n >= apple_daily.n",
+    "params": 0
+  },
+  {
+    "sql": "UPDATE apple_daily SET extra_json = (\n  SELECT json_group_object(ident, mins) FROM (\n    SELECT m.ident AS ident, m.mins AS mins FROM sleep_mins m\n    WHERE m.profile_id = apple_daily.profile_id\n      AND m.day = apple_daily.day\n      AND m.source_name = apple_daily.source_name\n    ORDER BY m.ident))\nWHERE type_zh = '睡眠' AND (apple_daily.profile_id, apple_daily.type_zh, apple_daily.day, apple_daily.source_name) IN (SELECT profile_id, type_zh, day, source_name FROM touched_keys)",
+    "params": 0
+  },
+  {
+    "sql": "UPDATE apple_daily\nSET quality_flags = CASE\n  WHEN quality_flags = '' THEN 'partial_reimport_skipped'\n  WHEN instr(quality_flags, 'partial_reimport_skipped') > 0 THEN quality_flags\n  ELSE quality_flags || ',partial_reimport_skipped' END\nWHERE rowid IN (\n  SELECT a.rowid FROM apple_daily a JOIN touched_agg g\n    ON a.profile_id = g.profile_id AND a.type_zh = g.type_zh\n   AND a.day = g.day AND a.source_name = g.source_name\n  WHERE a.n > g.n)",
+    "params": 0
+  },
+  {
+    "sql": "DROP TABLE touched_keys",
+    "params": 0
+  },
+  {
+    "sql": "DROP TABLE touched_agg",
+    "params": 0
+  },
+  {
+    "sql": "DROP TABLE sleep_mins",
+    "params": 0
   }
 ]
 
 BACKFILL_STATEMENTS = [
-  "INSERT INTO apple_daily(profile_id, doc_id, type_zh, day, source_name,\n  n, sum_v, min_v, max_v, avg_v, quality_flags)\nSELECT profile_id, MAX(doc_id), type_zh, substr(start_ts,1,10),\n  COALESCE(source_name,''),\n  COUNT(*), SUM(COALESCE(value_normalized, value_numeric)), MIN(COALESCE(value_normalized, value_numeric)), MAX(COALESCE(value_normalized, value_numeric)), AVG(COALESCE(value_normalized, value_numeric)),\n  CASE WHEN substr(start_ts,1,10) < '2000-01-01'\n    THEN 'epoch_placeholder_date' ELSE '' END\nFROM apple_records\nWHERE type_zh IN ('心率','血氧','呼吸速率','睡眠','步數','步行跑步距離','騎車距離','爬樓層數','活動能量','基礎能量','步行速度','步幅','雙腳支撐比例','步態不對稱比例','耳機音量暴露','飲水量','攝取熱量','攝取脂肪','攝取碳水','攝取蛋白質')\nGROUP BY profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'')\nON CONFLICT(profile_id, type_zh, day, source_name) DO UPDATE SET\n  n=excluded.n, sum_v=excluded.sum_v, min_v=excluded.min_v,\n  max_v=excluded.max_v, avg_v=excluded.avg_v, doc_id=excluded.doc_id,\n  quality_flags=excluded.quality_flags\n  WHERE excluded.n >= apple_daily.n",
-  "UPDATE apple_daily SET extra_json = (\n  SELECT json_group_object(ident, mins) FROM (\n    SELECT COALESCE(r.value_text,'') AS ident,\n      CAST(ROUND(SUM((julianday(r.end_ts) - julianday(r.start_ts)) * 1440))\n        AS INTEGER) AS mins\n    FROM apple_records r\n    WHERE r.profile_id = apple_daily.profile_id AND r.type_zh = '睡眠'\n      AND substr(r.start_ts,1,10) = apple_daily.day\n      AND COALESCE(r.source_name,'') = apple_daily.source_name\n    GROUP BY COALESCE(r.value_text,'')\n    ORDER BY COALESCE(r.value_text,'')))\nWHERE type_zh = '睡眠'"
+  "CREATE TEMP TABLE touched_agg AS\nSELECT profile_id, type_zh, substr(start_ts,1,10) AS day,\n  COALESCE(source_name,'') AS source_name, MAX(doc_id) AS doc_id,\n  COUNT(*) AS n, SUM(COALESCE(value_normalized, value_numeric)) AS sum_v, MIN(COALESCE(value_normalized, value_numeric)) AS min_v,\n  MAX(COALESCE(value_normalized, value_numeric)) AS max_v, AVG(COALESCE(value_normalized, value_numeric)) AS avg_v\nFROM apple_records\nWHERE type_zh IN ('心率','血氧','呼吸速率','睡眠','步數','步行跑步距離','騎車距離','爬樓層數','活動能量','基礎能量','步行速度','步幅','雙腳支撐比例','步態不對稱比例','耳機音量暴露','飲水量','攝取熱量','攝取脂肪','攝取碳水','攝取蛋白質')\nGROUP BY profile_id, type_zh, substr(start_ts,1,10), COALESCE(source_name,'')",
+  "CREATE TEMP TABLE sleep_mins AS\nSELECT profile_id, substr(start_ts,1,10) AS day,\n  COALESCE(source_name,'') AS source_name,\n  COALESCE(value_text,'') AS ident,\n  CAST(ROUND(SUM((julianday(end_ts) - julianday(start_ts)) * 1440))\n    AS INTEGER) AS mins\nFROM apple_records\nWHERE type_zh = '睡眠'\nGROUP BY profile_id, substr(start_ts,1,10), COALESCE(source_name,''),\n  COALESCE(value_text,'')",
+  "INSERT INTO apple_daily(profile_id, doc_id, type_zh, day, source_name,\n  n, sum_v, min_v, max_v, avg_v, quality_flags)\nSELECT profile_id, doc_id, type_zh, day, source_name,\n  n, sum_v, min_v, max_v, avg_v,\n  CASE WHEN day < '2000-01-01'\n    THEN 'epoch_placeholder_date' ELSE '' END\nFROM touched_agg\nWHERE true -- 消除 parser 歧義：無此句時 ON 會被解析成 JOIN 條件（SQLite upsert 文件明載）\nON CONFLICT(profile_id, type_zh, day, source_name) DO UPDATE SET\n  n=excluded.n, sum_v=excluded.sum_v, min_v=excluded.min_v,\n  max_v=excluded.max_v, avg_v=excluded.avg_v, doc_id=excluded.doc_id,\n  quality_flags=excluded.quality_flags\n  WHERE excluded.n >= apple_daily.n",
+  "UPDATE apple_daily SET extra_json = (\n  SELECT json_group_object(ident, mins) FROM (\n    SELECT m.ident AS ident, m.mins AS mins FROM sleep_mins m\n    WHERE m.profile_id = apple_daily.profile_id\n      AND m.day = apple_daily.day\n      AND m.source_name = apple_daily.source_name\n    ORDER BY m.ident))\nWHERE type_zh = '睡眠'",
+  "DROP TABLE touched_agg",
+  "DROP TABLE sleep_mins"
 ]
 
 # 前向遷移：{來源版本: [SQL, ...]}，逐版執行至 SCHEMA_VERSION。
