@@ -16,6 +16,7 @@ import path from "node:path";
 import { NodeDriver } from "../app/src/store/node_driver.js";
 import { initSchema } from "../app/src/store/schema.js";
 import { createProfile } from "../app/src/engine/profiles.js";
+import { importAggregateStatements } from "../app/src/engine/aggregate.js";
 import { buildPayload } from "../app/src/provider/payload.js";
 import { assemble } from "../app/src/provider/assemble.js";
 
@@ -207,14 +208,91 @@ for (let i = 0; i < A_DAYS; i++) {
       "示範血壓計", ""]);
   }
 }
+// ---------- Watch 樣態（display-revamp-bands-cleanup 六分頁示範素材）----------
+// 最近 400 天有「示範手錶」：心率帶狀、血氧、呼吸速率、安靜心率、睡眠。
+// 血氧與行走穩定度照 HealthKit 官方值域存 0-1 標 %（檢視層換算顯示）。
+const W_DAYS = 400;
+const pad2 = (n) => String(n).padStart(2, "0");
+for (let i = 0; i < W_DAYS; i++) {
+  const day = addDays(A_START, A_DAYS - W_DAYS + i);
+  const ds = iso(day);
+  const rest = Math.round(55 + rnd() * 8);
+  for (const [hh, base] of [[8, rest + 12], [12, rest + 25], [18, rest + 45], [21, rest + 8]]) {
+    appleRows.push([pid, docs.apple, "HKQuantityTypeIdentifierHeartRate", "心率",
+      `${ds} ${pad2(hh)}:1${i % 10}:00`, `${ds} ${pad2(hh)}:1${i % 10}:00`,
+      Math.round(base + (rnd() - 0.5) * 14), null, null, "count/min", "示範手錶", ""]);
+  }
+  appleRows.push([pid, docs.apple, "HKQuantityTypeIdentifierRestingHeartRate", "安靜心率",
+    `${ds} 23:59:00`, `${ds} 23:59:00`, rest, null, null, "count/min", "示範手錶", ""]);
+  appleRows.push([pid, docs.apple, "HKQuantityTypeIdentifierOxygenSaturation", "血氧",
+    `${ds} 03:00:00`, `${ds} 03:00:00`,
+    Math.round((0.93 + rnd() * 0.06) * 100) / 100, null, null, "%", "示範手錶", ""]);
+  appleRows.push([pid, docs.apple, "HKQuantityTypeIdentifierRespiratoryRate", "呼吸速率",
+    `${ds} 03:30:00`, `${ds} 03:30:00`,
+    r1(13 + rnd() * 4), null, null, "count/min", "示範手錶", ""]);
+  if (i % 7 === 0) {
+    appleRows.push([pid, docs.apple, "HKQuantityTypeIdentifierAppleWalkingSteadiness",
+      "行走穩定度", `${ds} 09:00:00`, `${ds} 09:00:00`,
+      Math.round((0.86 + rnd() * 0.1) * 1000) / 1000, null, null, "%", "示範手機", ""]);
+  }
+  // 睡眠：躺床一段＋核心／深層／快速動眼分段（起始都在同一日曆日）
+  const inBedMin = 420 + Math.round(rnd() * 90);
+  appleRows.push([pid, docs.apple, "HKCategoryTypeIdentifierSleepAnalysis", "睡眠",
+    `${ds} 23:0${i % 10}:00`, `${iso(addDays(day, 1))} 07:0${i % 10}:00`,
+    null, null, "HKCategoryValueSleepAnalysisInBed", null, "示範手錶", ""]);
+  let t = 23 * 60 + 20;
+  for (const [stage, mins] of [["AsleepCore", Math.round(inBedMin * 0.55)],
+    ["AsleepDeep", Math.round(inBedMin * 0.18)],
+    ["AsleepREM", Math.round(inBedMin * 0.2)]]) {
+    const sH = Math.floor(t / 60) % 24, sM = t % 60;
+    const eAbs = t + mins;
+    const nextDay = eAbs >= 24 * 60;
+    const eH = Math.floor(eAbs / 60) % 24, eM = eAbs % 60;
+    appleRows.push([pid, docs.apple, "HKCategoryTypeIdentifierSleepAnalysis", "睡眠",
+      `${ds} ${pad2(sH)}:${pad2(sM)}:00`,
+      `${nextDay ? iso(addDays(day, 1)) : ds} ${pad2(eH)}:${pad2(eM)}:00`,
+      null, null, `HKCategoryValueSleepAnalysis${stage}`, null, "示範手錶", ""]);
+    t = eAbs;
+  }
+}
 await d.batchInsert("apple_records",
   ["profile_id", "doc_id", "type", "type_zh", "start_ts", "end_ts", "value_numeric",
     "value_normalized", "value_text", "unit", "source_name", "quality_flags"],
   appleRows);
 
+// 運動記錄（測量分頁的列表）：每週 2 次
+const workoutRows = [];
+for (let i = 0; i < W_DAYS; i += 3 + Math.floor(rnd() * 3)) {
+  const day = addDays(A_START, A_DAYS - W_DAYS + i);
+  const ds = iso(day);
+  const [act, mins] = pick([["Running", 32], ["Walking", 48], ["Cycling", 55], ["Yoga", 40]]);
+  workoutRows.push([pid, docs.apple, act, `${ds} 07:00:00`, `${ds} 08:00:00`,
+    r1(mins + (rnd() - 0.5) * 10), "示範手錶"]);
+}
+await d.batchInsert("apple_workouts",
+  ["profile_id", "doc_id", "activity", "start_ts", "end_ts", "duration_min", "source_name"],
+  workoutRows);
+
+// 疫苗接種（就醫分頁的表格）
+await d.batchInsert("immunizations",
+  ["profile_id", "doc_id", "section", "source_index", "record_fp", "canonical",
+    "date", "vaccine_name", "facility_name"],
+  [["流感疫苗（四價）", "2025-10-14"], ["COVID-19 疫苗（JN.1）", "2025-10-14"],
+    ["肺炎鏈球菌疫苗（PCV13）", "2024-11-06"], ["帶狀疱疹疫苗（第二劑）", "2024-03-22"]]
+    .map(([name, dt], i) => [pid, docs.nhi, "r6", i + 1, `fp-imm-${i}`, "{}",
+      dt, name, "示範綜合醫院"]));
+
+// 彙總表回填：payload 的活動與帶狀序列讀 apple_daily（直插 raw 不走
+// adapter，必須照匯入的真實路徑補跑同一份聚合語句，否則示範頁趨勢全空）
+for (const { sql, params } of importAggregateStatements()) {
+  await d.execute(sql, Array(params).fill(docs.apple));
+}
+
 // ---------- 組 payload 並產出示範 HTML ----------
+const BODY_REFS = JSON.parse(
+  readFileSync(path.join(REPO, "app/src/knowledge/body_refs.json"), "utf-8"));
 const payload = await buildPayload(d, { profileId: pid, knowledgeEntries: LAB_ENTRIES,
-  drugCachePath: DRUG_CACHE, today: TODAY });
+  bodyRefs: BODY_REFS, drugCachePath: DRUG_CACHE, today: TODAY });
 await d.close();
 
 const assets = {
