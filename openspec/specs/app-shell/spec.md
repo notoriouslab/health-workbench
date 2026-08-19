@@ -244,3 +244,26 @@ code:
   - app/src/ui/viewer.js
   - app/src/provider/assemble.js
 -->
+
+---
+### Requirement: 檢查新版入口
+
+App MUST 於版號旁提供「檢查新版」入口，點擊以系統瀏覽器開啟本專案的
+GitHub releases 頁。App 本體 MUST NOT 為此發出任何網路請求，MUST NOT
+自動檢查版本（連網只發生在使用者主動開瀏覽器，與既有「開啟↗」同一
+信任模型）。開啟失敗時沿用既有 fallback（複製連結並提示手動前往）。
+
+#### Scenario: 使用者主動檢查
+- **WHEN** 使用者點擊「檢查新版」
+- **THEN** 系統瀏覽器開啟 releases 頁；App 程序自身無任何網路連線
+
+#### Scenario: 不自動連網
+- **WHEN** App 啟動並閒置
+- **THEN** 無任何對外請求（含版本檢查類）
+
+<!-- @trace
+source: display-revamp-bands-cleanup
+updated: 2026-08-19
+code:
+  - docs/verification/display_revamp.md
+-->

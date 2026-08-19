@@ -26,6 +26,10 @@ MUST NOT 只提示單一格式（支援的來源已不只一種）。
 資料夾列舉 MUST 有項目數上限：使用者可能選到大型目錄（如下載資料夾），
 無上限列舉會使介面停止回應。達到上限時以已收集到的項目進行判型。
 
+**判型面板顯示時 MUST 保有可容納約五行內容的最小高度**，MUST NOT 被
+分頁內其他區塊壓縮到只剩一行（2026-08-19 走查回饋：面板被上下區域擠扁，
+成員選擇與開始匯入難以操作）。面板未顯示時不佔空間的既有行為不變。
+
 #### Scenario: 拖放匯入
 - **WHEN** 使用者將健保 JSON 檔拖入視窗
 - **THEN** 顯示判型結果（健保存摺醫療類 JSON）與確認鈕，確認後開始匯入
@@ -46,12 +50,19 @@ MUST NOT 只提示單一格式（支援的來源已不只一種）。
 - **WHEN** 使用者拖入一個兩種路徑都不認得的資料夾
 - **THEN** 顯示完整支援格式清單，不進入匯入流程
 
+#### Scenario: 面板不被壓扁
+- **WHEN** 匯入分頁同時存在匯入紀錄卡等高度內容且判型面板顯示中
+- **THEN** 面板高度足以同時看見判型結果、成員選擇器與「開始匯入」鈕
+  （約五行內容），內容更多時面板內部捲動
+
+
 <!-- @trace
-source: cpap-sleep-therapy
-updated: 2026-08-13
+source: display-revamp-bands-cleanup
+updated: 2026-08-19
 code:
   - docs/verification/app_qa_closeout.md
   - docs/verification/cpap_gui_batch.md
+  - docs/verification/display_revamp.md
 -->
 
 ---

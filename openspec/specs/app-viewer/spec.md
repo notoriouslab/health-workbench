@@ -32,6 +32,32 @@ App 內的即時檢視層：DataProvider 契約、四分頁即時檢視、成員
 跨語言一致性：新增的彙總 MUST 以 SQL 計算而非在兩種語言各自實作四捨五入
 （既有 payload 已有為了模擬另一語言捨入行為而存在的補丁，不應再增加）。
 
+**量測序列的鍵集合與形狀**（2026-08-19 帶狀改版）：
+
+- `measures` MUST 為逐筆保留型別的每日中位數序列 `[[day, value]]`，
+  鍵集合為常數 `MEDIAN_TYPES`，其值 MUST 與逐筆保留清單
+  （PER_ROW_TYPES）**全等**（9 個型別：體重、BMI、體脂率、除脂體重、
+  身高、收縮壓、舒張壓、安靜心率、行走穩定度）；心率、血氧
+  MUST NOT 再出現於 `measures`。
+- 新頂層鍵 `measure_bands` MUST 為 `{型別: [[day, avg, min, max]]}`，
+  鍵集合為常數 `BAND_TYPES` ＝心率、血氧、呼吸速率；資料讀
+  apple_daily，同日多來源 MUST 合併為單點（avg ＝ SUM(sum_v)/SUM(n)，
+  與全體 raw 直算精確全等；min/max 取跨來源極值；avg 捨入 MUST 以
+  SQL ROUND 取 2 位——血氧值域 0-1，取 1 位會砍光解析度），每日
+  MUST NOT 輸出多於一點；MUST 排除帶
+  epoch_placeholder_date 旗標的列；`partial_reimport_skipped` 的列
+  MUST 照常帶出（其數值仍是既有最完整值）。
+- 新頂層鍵 `sleep_daily` MUST 為 `[[day, {識別字: 分鐘}]]`（apple_daily
+  睡眠列的 extra_json 解析原樣帶出，識別字 MUST NOT 在 provider 層
+  轉譯或過濾）。同日多來源時 MUST 取分鐘合計最大的單一來源列
+  （語意同活動類防雙計），MUST NOT 跨來源相加；合計同分時以
+  source_name 排序取首（決定性，兩端 SQL 逐字同形）。
+- `MEDIAN_TYPES` 與 `BAND_TYPES` 在兩端各一份、值 MUST 相同，且
+  MEDIAN_TYPES MUST 與逐筆保留清單（PER_ROW_TYPES）全等、
+  BAND_TYPES MUST 為彙總清單（AGGREGATE_TYPES）的子集，以測試釘住
+  （帶狀型別若誤入逐筆組，清理後圖會破且無錯誤訊息）。
+- shape.json MUST 一併涵蓋 `measure_bands` 與 `sleep_daily`。
+
 #### Scenario: 契約驗證
 - **WHEN** 對同一單成員資料庫分別執行 App provider（帶該成員 id）
   與 Python embed 產出
@@ -47,12 +73,24 @@ App 內的即時檢視層：DataProvider 契約、四分頁即時檢視、成員
 - **WHEN** 資料庫沒有任何 CPAP 資料
 - **THEN** payload 仍含 CPAP 區塊（各項為空），MUST NOT 缺鍵
 
+#### Scenario: 帶狀數值獨立驗證
+- **WHEN** 以含多筆／日心率的 fixture 匯入後產出 payload
+- **THEN** `measure_bands` 的心率各日 avg/min/max 與對 raw 直算的
+  結果全等（不信任彙總表寫入方的既有測試）
+
+#### Scenario: 無帶狀資料時的契約
+- **WHEN** 資料庫沒有任何心率、血氧、呼吸速率、睡眠紀錄
+- **THEN** payload 仍含 `measure_bands`（各型別空序列）與 `sleep_daily`
+  （空），MUST NOT 缺鍵
+
+
 <!-- @trace
-source: cpap-sleep-therapy
-updated: 2026-08-13
+source: display-revamp-bands-cleanup
+updated: 2026-08-19
 code:
   - docs/verification/multi_profile_qa_closeout.md
   - docs/verification/cpap_viewer.md
+  - docs/verification/display_revamp.md
 -->
 
 ---
@@ -80,31 +118,36 @@ code:
 ---
 ### Requirement: 既有互動行為不退化
 
-四分頁、全文搜尋、篩選連動、用藥三分類、處方時間軸展開、藥↔看診
-雙向跳轉與捲動定位、匯入紀錄卡等 `dashboard-generator` spec 既有
-requirements 在 App 內 MUST 全數成立。趨勢圖改為共用時間域定位、
-標記降級與區間選擇後，總覽頁的體重趨勢卡（維持既有「最後 365 筆」
-語意不變）、檢驗趨勢的項目下拉、最新檢驗表點入跳轉 MUST 維持既有行為；
-步數圖在近一年與全部區間維持月平均（近三月改逐日，見「趨勢圖依
-區間過濾資料點」）。
+六分頁（總覽／就醫／用藥／檢驗／測量／睡眠呼吸）、全文搜尋、篩選連動、
+用藥三分類、處方時間軸展開、藥↔看診雙向跳轉與捲動定位、匯入紀錄卡等
+`dashboard-generator` spec 既有 requirements 在 App 內 MUST 全數成立。
+2026-08-19 分頁改版後：原趨勢分頁的內容由檢驗與測量兩分頁承接，
+搬移 MUST NOT 改變各圖的資料語意——總覽頁的體重趨勢卡（維持既有
+「最後 365 筆」語意不變）、體重成健同圖、檢驗趨勢的項目下拉（移至
+檢驗分頁）、最新檢驗表點入跳轉（改指向檢驗分頁）、步數圖在近一年與
+全部區間維持月平均（近三月改逐日，移至測量分頁）MUST 維持既有行為。
 
 #### Scenario: 走查清單
 - **WHEN** 依 dashboard-generator spec 的 scenario 清單逐項走查 App
 - **THEN** 全數通過，無互動退化
 
 #### Scenario: 總覽體重卡不受影響
-- **WHEN** 趨勢頁區間切為「近三月」
-- **THEN** 總覽頁的體重趨勢卡顯示內容不變（其資料範圍與趨勢頁的
+- **WHEN** 測量分頁區間切為「近三月」
+- **THEN** 總覽頁的體重趨勢卡顯示內容不變（其資料範圍與趨勢類分頁的
   區間選擇無關）
 
+#### Scenario: 舊分頁 id 清除
+- **WHEN** 對檢視程式全文搜尋跳轉目標 `"trends"`
+- **THEN** 零出現（總覽與搜尋的檢驗跳轉皆已指向檢驗分頁）
 
 
 <!-- @trace
-source: trend-time-axis
-updated: 2026-08-12
+source: display-revamp-bands-cleanup
+updated: 2026-08-19
 code:
   - docs/verification/app_qa_closeout.md
   - docs/verification/trend_time_axis_closeout.md
+  - docs/verification/display_revamp.md
 -->
 
 ---
@@ -251,15 +294,16 @@ code:
 ---
 ### Requirement: 趨勢圖以共用時間域定位
 
-**本 requirement 適用於趨勢頁的圖表。** 總覽頁的體重趨勢卡沒有區間
+**本 requirement 適用於趨勢類分頁（檢驗、測量、睡眠呼吸）的圖表；
+時間域與區間選擇的作用域為單一分頁。** 總覽頁的體重趨勢卡沒有區間
 控制項，其時間域 MUST 為該卡資料自身的首末日期。
 
-趨勢頁的全部圖表 MUST 共用一組時間域 `[tMin, tMax]`，該時間域
+同一趨勢類分頁的全部圖表 MUST 共用一組時間域 `[tMin, tMax]`，該時間域
 MUST 由當前顯示區間的日曆邊界決定，MUST NOT 由個別序列自身的資料
 範圍決定：近三月為 `[today - 90 日, today]`、近一年為
-`[today - 365 日, today]`、全部為 `[趨勢序列集合中的最早日期, today]`。
+`[today - 365 日, today]`、全部為 `[該頁趨勢序列集合中的最早日期, today]`。
 
-`today` MUST 為 `max(meta.generated_at, 趨勢序列集合中的最新日期)`，
+`today` MUST 為 `max(meta.generated_at, 該頁趨勢序列集合中的最新日期)`，
 MUST NOT 取執行當下的系統時間（匯出的單檔 HTML 是「資料截至某日」的
 快照，其區間與預設值 MUST NOT 隨開啟時間改變）。取 max 的理由：
 `generated_at` 在 App 端與 Python 端的產生方式不同（一為 UTC 日期、
@@ -267,11 +311,12 @@ MUST NOT 取執行當下的系統時間（匯出的單檔 HTML 是「資料截�
 最新資料，該筆量測會被靜默隱藏。任何資料點 MUST NOT 因落在時間域
 之外而被無聲剔除。
 
-**趨勢序列集合**（`tMin`、`today` 與預設區間判定皆以此為準）MUST 為：
-體重（自主量測與健保成健兩條）、收縮壓、舒張壓、步數、**全部**可繪圖
-的檢驗項目（即有數值結果者；純文字結果不繪圖故不影響時間域）；
-MUST NOT 只計入檢驗下拉當前選中的項目（否則切換檢驗項目會位移其他
-圖表的 x 軸）。
+**趨勢序列集合**（`tMin`、`today` 與預設區間判定皆以此為準）MUST 為
+該分頁繪製的**全部**序列：檢驗分頁 MUST 含全部可繪圖的檢驗項目（即有
+數值結果者；純文字結果不繪圖故不影響時間域），MUST NOT 只計入下拉
+當前選中的項目（否則切換檢驗項目會位移同頁其他圖表的 x 軸）；測量
+分頁含四個子區塊的全部序列（帶狀序列以其日期參與）；睡眠呼吸分頁含
+CPAP 各序列與 Apple 睡眠、呼吸速率、血氧序列。
 
 資料點 x 座標 MUST 為 `(t - tMin) / (tMax - tMin)` 的線性映射，
 使時間間隔與圖上水平距離成正比。x 軸刻度 MUST 依時間挑選（跨度
@@ -320,24 +365,30 @@ MUST NOT 讓同一個月內的多個刻度標成相同文字。
 - **WHEN** 序列只有一個資料點，或全部點日期相同，或區間跨度為零
 - **THEN** 圖表正常渲染（無 NaN 座標、無空白圖），資料點可見
 
+#### Scenario: 切換檢驗項目不位移他圖
+- **WHEN** 於檢驗分頁切換下拉選中的檢驗項目
+- **THEN** 該頁時間域不變（集合含全部項目），其他趨勢類分頁不受影響
+
 
 <!-- @trace
-source: trend-time-axis
-updated: 2026-08-12
+source: display-revamp-bands-cleanup
+updated: 2026-08-19
 code:
   - docs/verification/trend_time_axis_closeout.md
+  - docs/verification/display_revamp.md
 -->
 
 ---
 ### Requirement: 趨勢頁時間區間選擇
 
-趨勢頁 MUST 提供一組作用於該頁全部圖表的時間區間選擇（近三月、
-近一年、全部）；單張圖表 MUST NOT 各自帶獨立的區間控制項，以維持
-「同頁各圖恆為同一區間」的同期對照語意。切換區間 MUST 即時重繪、
-毋須重新載入。
+各趨勢類分頁（檢驗、測量、睡眠呼吸）MUST 各自提供一組作用於**該頁**
+全部圖表的時間區間選擇（近三月、近一年、全部）；單張圖表 MUST NOT
+各自帶獨立的區間控制項，以維持「同頁各圖恆為同一區間」的同期對照
+語意。切換區間 MUST 即時重繪、毋須重新載入。跨分頁的區間各自獨立，
+MUST NOT 互相連動（同期對照不變式的作用域是單一分頁）。
 
-預設區間 MUST 依資料新舊自動決定：當前成員全部趨勢序列中最新的
-一筆（各序列末筆取最大值）在 `today` 前 90 日內者預設為近一年，
+預設區間 MUST 依資料新舊自動決定：當前成員**該頁**趨勢序列集合中最新
+的一筆（各序列末筆取最大值）在 `today` 前 90 日內者預設為近一年，
 否則預設為全部。
 
 某圖在當前區間內無任何資料時，該圖 MUST 顯示無資料訊息並提供
@@ -345,11 +396,11 @@ code:
 MUST NOT 只切換單張圖表（否則破壞同期對照不變式）。
 
 #### Scenario: 同期對照
-- **WHEN** 使用者於趨勢頁選「近一年」
+- **WHEN** 使用者於測量分頁選「近一年」
 - **THEN** 該頁全部圖表同步改為近一年，各圖 x 軸起訖一致
 
 #### Scenario: 整體陳舊資料的預設區間
-- **WHEN** 成員全部趨勢序列的最新一筆距 `today` 超過 90 日
+- **WHEN** 成員該頁趨勢序列的最新一筆距 `today` 超過 90 日
 - **THEN** 預設區間為「全部」，圖表有內容可看
 
 #### Scenario: 單一序列在區間內無資料
@@ -359,10 +410,11 @@ MUST NOT 只切換單張圖表（否則破壞同期對照不變式）。
 
 
 <!-- @trace
-source: trend-time-axis
-updated: 2026-08-12
+source: display-revamp-bands-cleanup
+updated: 2026-08-19
 code:
   - docs/verification/trend_time_axis_closeout.md
+  - docs/verification/display_revamp.md
 -->
 
 ---
@@ -482,16 +534,46 @@ code:
 ---
 ### Requirement: 睡眠呼吸分頁
 
-有 CPAP 資料時 MUST 提供獨立分頁，內容為：每晚 AHI（可切換顯示阻塞、
+有 CPAP 資料**或 Apple 睡眠彙總資料**時 MUST 提供獨立分頁；兩者皆無時
+MUST NOT 顯示本分頁。CPAP 內容為：每晚 AHI（可切換顯示阻塞、
 中樞、低通氣分項）、使用時數、漏氣、送氣壓力、睡眠期血氧、**每晚事件數**
-與逐筆事件明細。區間選擇 MUST 沿用趨勢頁既有的共用時間域機制，
+與逐筆事件明細。區間選擇 MUST 沿用趨勢類分頁既有的共用時間域機制，
 MUST NOT 自造一套。
+
+**Apple 睡眠與呼吸內容**（2026-08-19 新增，各區塊無資料不渲染）：
+
+- **睡眠時數**：每日總睡眠時數折線（`sleep_daily` 中識別字去除
+  `HKCategoryValueSleepAnalysis` 前綴後以 `Asleep` 開頭者的分鐘數
+  合計，換算小時；實測識別字為完整字串）；有多種睡眠識別字時 MUST 提供分項
+  切換（沿 AHI 分項模式），識別字 MUST 以對照表轉中文（InBed=躺床、
+  AsleepUnspecified=睡眠（未分類）、AsleepCore=核心、AsleepDeep=深層、
+  AsleepREM=快速動眼、Awake=清醒），**未知識別字 MUST 顯示原名**，
+  MUST NOT 丟棄；未知識別字 MUST NOT 計入總睡眠時數（語意不明，寧可
+  少算並如實列出分項）。
+- **CPAP 使用對照**：CPAP 使用時數與 Apple 睡眠時數兩條線同圖（同單位
+  小時），並以文字顯示合計比值「使用時數佔睡眠時數比例 ≈ N%」。
+  合計範圍 MUST 為「當前區間 ∩ 兩來源皆有資料的日期範圍
+  （[max(兩來源各自最早日), min(兩來源各自最晚日)]）」，兩端取同一
+  範圍後各自加總再相除。比值旁 MUST 標示重疊晚數；重疊日期範圍為空
+  時 MUST NOT 顯示比值文字（兩條線照畫）。比值 MUST 由程式實算並隨
+  區間切換重算，
+  MUST NOT 逐晚相除（兩來源的「一晚」定義不同：CPAP 為正午分界的
+  紀錄夜、Apple 為入睡起始的日曆日，凌晨入睡的夜兩邊差一天，逐晚相除
+  會產生系統性錯位）。比值超過 100% 時 MUST 如實顯示，說明文字 MUST
+  註明兩來源一晚定義不同、且 Apple 睡眠依賴裝置配戴而可能不完整。
+  本區塊的標題與說明 MUST NOT 使用「治療覆蓋率」「治療依從」等
+  判定性組合詞（禁用詞守衛以精確詞入清單，MUST NOT 加寬為單字
+  「治療」——同資產的免責聲明合法含有該字）。
+- **呼吸速率**：每日帶狀（沿「量測帶狀圖」requirement）。
+- **血氧低點**：apple_daily 血氧 min 折線。MUST 與 CPAP 睡眠期血氧
+  分開成圖（兩者來源、量測情境不同，疊圖會誤導為同一量測）。
 
 **單位或數量級不同的序列 MUST NOT 疊在同一張圖**：圖表只有單一 y 軸，
 上下界由全部序列共同決定，數量級小的序列會被壓成貼底的平線。需要對照時
 MUST 改用上下堆疊、共用同一時間域的多張圖。
 
-日期語意 MUST 於圖表旁明示為「入睡當晚」。
+日期語意 MUST 於圖表旁明示：CPAP 各圖為「入睡當晚」，Apple 睡眠各圖為
+「入睡起始的日曆日」。
 
 **每晚事件數 MUST 以每晚各類型的事件計數呈現**，且該序列 MUST NOT 受
 逐筆保留範圍影響：它是聚合視角，庫內有事件的每一晚都要畫得出來，資料
@@ -521,12 +603,32 @@ MUST 改用上下堆疊、共用同一時間域的多張圖。
 - **THEN** 展開年份時列出該年每一晚但仍無逐筆列；展開某晚後才出現該晚的
   逐筆明細（時刻、類型、持續）
 
+#### Scenario: 只有 Apple 睡眠沒有 CPAP
+- **WHEN** 資料庫有 Apple 睡眠彙總但無任何 CPAP 資料
+- **THEN** 睡眠呼吸分頁存在，顯示睡眠時數（與呼吸速率、血氧低點，如有
+  資料），CPAP 各圖與使用對照皆不渲染
+
+#### Scenario: 使用對照的比值
+- **WHEN** 同時有 CPAP 使用時數與 Apple 睡眠時數，區間為近一年
+- **THEN** 同圖顯示兩條線，文字顯示該區間重疊日期範圍的合計比值與
+  重疊晚數；切換區間後兩者隨之重算
+
+#### Scenario: 無重疊日期
+- **WHEN** CPAP 與 Apple 睡眠的資料日期範圍完全不重疊
+- **THEN** 兩條線照常繪製，比值文字不顯示（不顯示 0% 或錯誤值）
+
+#### Scenario: 未知睡眠識別字
+- **WHEN** sleep_daily 含對照表沒有的識別字
+- **THEN** 分項中以原名列出其分鐘數，且不計入總睡眠時數
+
+
 <!-- @trace
-source: viewer-and-history-refinement
-updated: 2026-08-14
+source: display-revamp-bands-cleanup
+updated: 2026-08-19
 code:
   - docs/verification/cpap_viewer.md
   - docs/verification/viewer_history_refinement.md
+  - docs/verification/display_revamp.md
 -->
 
 ---
@@ -552,19 +654,28 @@ code:
 ---
 ### Requirement: 趨勢頁的睡眠呼吸對照
 
-趨勢頁 MUST 提供每晚 AHI 圖，與同頁其他圖共用時間域與區間選擇。
-CPAP 的日期 MUST 納入共用時間域的計算來源，否則新圖的 x 軸會與同頁其他
-圖不一致，資料點被壓到繪圖區邊界。
+測量分頁 MUST 提供每晚 AHI 圖（有 CPAP 資料時；沿用「無資料不留空」），
+與同頁其他圖共用時間域與區間選擇（本 requirement 的存在理由是 AHI 與
+體重、步數等健康序列的**同期對照**，2026-08-19 分頁改版後由測量分頁
+承載，requirement 名稱保留以維持溯源）。
+CPAP 的日期 MUST 納入該頁共用時間域的計算來源，否則此圖的 x 軸會與
+同頁其他圖不一致，資料點被壓到繪圖區邊界。
 
 #### Scenario: 時間域涵蓋 CPAP 日期
 - **WHEN** CPAP 資料的起始日期早於其他所有序列
-- **THEN** 共用時間域的下界為該日期，x 軸刻度涵蓋該區間
+- **THEN** 該頁共用時間域的下界為該日期，x 軸刻度涵蓋該區間
+
+#### Scenario: 與其他序列同期對照
+- **WHEN** 資料庫含 CPAP 資料，使用者於測量分頁切換區間
+- **THEN** AHI 圖與體重、步數等圖同步切換、x 軸起訖一致
+
 
 <!-- @trace
-source: cpap-sleep-therapy
-updated: 2026-08-13
+source: display-revamp-bands-cleanup
+updated: 2026-08-19
 code:
   - docs/verification/cpap_viewer.md
+  - docs/verification/display_revamp.md
 -->
 
 ---
@@ -630,4 +741,194 @@ source: viewer-and-history-refinement
 updated: 2026-08-14
 code:
   - docs/verification/viewer_history_refinement.md
+-->
+
+---
+### Requirement: 檢驗分頁
+
+App MUST 提供獨立的檢驗分頁：檢驗項目清單（依筆數排序、顯示每項筆數）、
+選中項目的趨勢圖（含參考值灰帶與 knowledge 說明，行為沿用原趨勢頁檢驗段）
+與該項逐筆表。文字型結果的項目 MUST 照常列於清單並顯示逐筆表、
+僅不繪圖（沿用既有語意）。
+
+總覽「最新檢驗」表與搜尋結果的檢驗項目點入 MUST 跳轉至檢驗分頁並選中
+該項目，MUST NOT 再指向已不存在的趨勢分頁。
+
+#### Scenario: 檢驗有自己的入口
+- **WHEN** 使用者點選檢驗分頁
+- **THEN** 看到全部檢驗項目清單（含筆數），點選任一項即見其趨勢與逐筆表
+
+#### Scenario: 跳轉指向檢驗分頁
+- **WHEN** 於總覽最新檢驗表或搜尋結果點選某檢驗項目
+- **THEN** 進入檢驗分頁且該項目已選中
+
+
+<!-- @trace
+source: display-revamp-bands-cleanup
+updated: 2026-08-19
+code:
+  - docs/verification/display_revamp.md
+-->
+
+---
+### Requirement: 測量分頁
+
+App MUST 提供測量分頁，分為身體／循環／活動／其他四個子區塊，
+MUST NOT 平鋪十幾條線。序列歸屬：
+
+- **身體**：體重（Apple 中位數＋健保成健獨立標記，沿用既有同圖要求）、
+  BMI、體脂率、除脂體重、行走穩定度
+- **循環**：血壓（收縮壓＋舒張壓同圖）、心率（每日帶狀＋安靜心率
+  折線同圖，兩者同單位同數量級）、血氧（每日帶狀）
+- **活動**：步數（粒度隨區間的既有語意）、步行跑步距離＋騎車距離同圖、
+  爬樓層數、活動能量＋基礎能量同圖、運動記錄
+- **其他**：身高（有資料時顯示最近值一行文字，不繪趨勢圖）
+
+同圖疊加 MUST 遵守既有「單位或數量級不同的序列 MUST NOT 疊在同一張圖」
+條款。運動記錄 MUST 以列表呈現（日期、類型、時長）並依年分層摺疊
+（沿用就醫時間軸的年份分層模式），MUST NOT 平鋪全部歷史。
+
+**行走穩定度** MUST 以百分比顯示（原始值域 0-1，顯示層 ×100、單位標
+%），MUST NOT 自行推斷或顯示跌倒風險分級（分級屬另一個未收錄的
+category 型別；自行分級是判定性描述）。圖說 MUST 說明該值由 Apple
+用於評估行走穩定，分級請見 iPhone 健康 App。
+
+#### Scenario: 四子區塊分區呈現
+- **WHEN** 使用者進入測量分頁
+- **THEN** 序列依上表歸屬於身體／循環／活動／其他，各子區塊有標題分隔
+
+#### Scenario: 行走穩定度的呈現
+- **WHEN** 資料庫含行走穩定度紀錄（raw 值 0.79）
+- **THEN** 圖上顯示 79%，且介面無任何風險分級字樣
+
+#### Scenario: 運動記錄分層
+- **WHEN** 運動記錄跨多個年份
+- **THEN** 預設只見年份列（含該年筆數），展開該年才渲染逐筆列
+
+
+<!-- @trace
+source: display-revamp-bands-cleanup
+updated: 2026-08-19
+code:
+  - docs/verification/display_revamp.md
+-->
+
+---
+### Requirement: 量測帶狀圖
+
+心率、血氧、呼吸速率 MUST 以每日帶狀呈現：avg 為折線、min 與 max 為
+半透明面（同色系）。帶狀資料 MUST 讀取 apple_daily 的 avg_v／min_v／
+max_v（payload 的 `measure_bands`），MUST NOT 由 raw 逐筆計算（清理
+raw 後仍須可繪）。
+
+帶的上下界 MUST 參與該圖 y 軸上下界計算（否則帶會畫出繪圖區）；帶的面
+MUST 隨區間切換以與 avg 相同的規則過濾。逐點數值提示 MUST 含
+「avg（min-max）」三值。血氧的原始值域為 0-1 標 %（HealthKit 官方
+定義，同體脂率、行走穩定度款），顯示 MUST 以整序列判定（全部值
+≤ 1.5）換算為百分比，MUST NOT 直接以 0-1 值標 % 單位繪製。帶的面 MUST NOT 繪製標記也不參與標記門檻
+計算；avg 折線視同一般序列，套用「密集序列的標記降級」的同一套門檻。
+
+心率帶狀圖 MUST 同圖疊加安靜心率折線（同單位 bpm、同數量級），
+以圖例區分。
+
+#### Scenario: 帶狀渲染與提示
+- **WHEN** 檢視心率帶狀圖上的某一日
+- **THEN** 該日顯示 avg 折線點與 min-max 面，逐點提示含三個數值
+
+#### Scenario: 帶狀不依賴 raw
+- **WHEN** 對已執行「釋放空間」的資料庫開啟測量分頁
+- **THEN** 心率、血氧、呼吸速率帶狀圖內容與清理前完全相同
+
+#### Scenario: 帶參與 y 軸域
+- **WHEN** 某日 max 遠高於全部 avg 值
+- **THEN** y 軸上界涵蓋該 max，帶不超出繪圖區
+
+
+<!-- @trace
+source: display-revamp-bands-cleanup
+updated: 2026-08-19
+code:
+  - docs/verification/display_revamp.md
+-->
+
+---
+### Requirement: 身體數值的參考線
+
+血壓圖 MUST 顯示收縮 130 與舒張 80 兩條水平參考線（居家量測判準），
+BMI 圖 MUST 顯示 18.5-24 參考帶。參考標準 MUST 取自 knowledge 條目
+（見 knowledge-annotations），MUST NOT 寫死在圖表程式；圖下 MUST
+顯示來源名稱與引用日期。標示措辭 MUST 為「參考」性質，MUST NOT
+出現正常／超標等判定字樣。
+
+本 requirement 的涵蓋範圍第一版**僅此兩項**：腰圍標準分性別而系統
+未收性別欄、血氧與心率無合適的通用官方標準、體重無通用標準（BMI
+已涵蓋），MUST NOT 在未補齊依據前對這些型別加參考線。
+
+#### Scenario: 血壓參考線
+- **WHEN** 檢視血壓圖
+- **THEN** 130 與 80 兩條參考虛線可見，圖下標示來源與引用日期，
+  無任何判定字樣
+
+#### Scenario: 標準值來自 knowledge
+- **WHEN** knowledge 的參考標準條目被移除
+- **THEN** 對應參考線不顯示（而非顯示寫死的預設值），圖表其餘內容
+  照常
+
+
+<!-- @trace
+source: display-revamp-bands-cleanup
+updated: 2026-08-19
+code:
+  - docs/verification/display_revamp.md
+-->
+
+---
+### Requirement: 就醫分頁的疫苗接種區塊
+
+就醫分頁 MUST 顯示疫苗接種紀錄區塊（日期、疫苗名稱、院所），資料為
+payload 既有的 `immunizations`。沒有疫苗資料時 MUST NOT 顯示該區塊。
+
+#### Scenario: 疫苗紀錄可見
+- **WHEN** 資料庫含健保疫苗接種紀錄
+- **THEN** 就醫分頁顯示疫苗區塊，列出日期、疫苗名稱與院所
+
+#### Scenario: 無疫苗資料
+- **WHEN** 資料庫沒有疫苗接種紀錄
+- **THEN** 就醫分頁無疫苗區塊（不留空區塊）
+
+
+<!-- @trace
+source: display-revamp-bands-cleanup
+updated: 2026-08-19
+code:
+  - docs/verification/display_revamp.md
+-->
+
+---
+### Requirement: 新增區塊的無資料呈現
+
+本次新增的所有條件性內容（疫苗區塊、運動記錄、睡眠時數、CPAP 使用
+對照、呼吸速率、血氧低點、各帶狀圖、測量分頁各子區塊）MUST 沿用
+「沒有資料就不渲染該區塊」的既有原則：整塊無資料時不顯示標題與空圖；
+子區塊內全部序列皆空時整個子區塊不渲染。部分缺失（如有心率無血氧）
+時只渲染有資料的部分。
+
+理由同 CPAP 前例：空分頁與空卡片是雜訊，且會讓使用者誤以為功能故障。
+
+#### Scenario: 無 Watch 的資料庫
+- **WHEN** 資料庫的 Apple 資料無心率、血氧、呼吸速率、睡眠（無 Watch
+  樣態）
+- **THEN** 循環子區塊只顯示血壓，睡眠呼吸分頁不出現 Apple 睡眠相關
+  區塊，畫面無任何空圖表
+
+#### Scenario: 子區塊部分缺失
+- **WHEN** 身體子區塊只有體重資料、無 BMI 與體脂率
+- **THEN** 子區塊標題與體重圖照常渲染，BMI 與體脂率不出現任何空圖
+  或無資料訊息
+
+<!-- @trace
+source: display-revamp-bands-cleanup
+updated: 2026-08-19
+code:
+  - docs/verification/display_revamp.md
 -->

@@ -224,7 +224,6 @@ code:
 -->
 
 ---
-
 ### Requirement: CPAP 資料表
 
 SHALL 含每日摘要、呼吸事件與睡眠血氧三張表，均帶 `profile_id` 與
@@ -293,4 +292,70 @@ source: apple-daily-aggregates
 updated: 2026-08-19
 code:
   - docs/verification/apple_daily_aggregates.md
+-->
+
+---
+### Requirement: 釋放空間
+
+App MUST 提供使用者主動的「釋放空間」動作：刪除 `AGGREGATE_TYPES`
+20 個彙總型別的全部 apple_records 逐筆列（全庫、所有成員）並 VACUUM。
+逐筆保留清單（PER_ROW_TYPES）9 個型別 MUST 一筆不刪；apple_daily、
+apple_workouts 與其他任何表 MUST 逐位元組不變（VACUUM 造成的實體
+重排除外）。MUST NOT 自動觸發（此動作不可逆，決定權在使用者）。
+
+**對帳防線（刪除前，不過則零刪除）**：將刪 raw 列的每個
+`(profile_id, type_zh, day, source_name)` 鍵 MUST 存在對應的
+apple_daily 列，**且該列的 n MUST 不小於該鍵的 raw 列數**（只查鍵
+存在會放過殘缺彙總；判準用 n 而非數值欄非 NULL，category 型別的
+數值欄天生 NULL）；對帳不通過 MUST 中止並顯示原因，資料庫零寫入。
+
+**確認文案** MUST 由程式當場實算數字（將刪筆數、目前資料庫大小、
+預估清理後大小），MUST NOT 寫死任何容量；預估以「平均列佔用」法
+計算（現大小 ÷ 全庫總列數 × 將刪列數）並標示「約」。文案 MUST 說明
+逐筆明細刪除後不會再回來、每日統計與圖表不受影響，以及 VACUUM 需要
+約等於清理後資料庫大小的暫存磁碟空間。確認 MUST 用頁內元素，
+MUST NOT 用原生 confirm。
+
+**執行語意**：刪除 MUST 在單一交易內完成；VACUUM MUST 在交易外執行
+（SQLite 限制）。VACUUM 失敗時資料仍一致（刪除已完成、僅空間未回收），
+MUST 明確告知可稍後重試，MUST NOT 顯示為整體失敗回滾。完成後 MUST
+回報實際的前後大小。
+
+**清理後不變式**：payload 的 activity、measure_bands、sleep_daily
+與 measures 各序列 MUST 與清理前完全相同（趨勢一律讀彙總表或逐筆
+保留列，不依賴被刪的 raw）。
+
+#### Scenario: 正常清理
+- **WHEN** 使用者確認執行釋放空間
+- **THEN** 20 個彙總型別的 raw 列為 0、9 個逐筆保留型別筆數不變，
+  完成訊息含實際前後大小
+
+#### Scenario: 對帳防線攔截
+- **WHEN** 某個將刪的鍵在 apple_daily 沒有對應列（人為刪除一列彙總
+  模擬未知路徑）
+- **THEN** 動作中止並顯示原因，apple_records 零刪除
+
+#### Scenario: 殘缺彙總攔截
+- **WHEN** 某鍵的 apple_daily 列存在但 n 被人為改小於該鍵 raw 列數
+- **THEN** 動作中止並顯示原因，apple_records 零刪除
+
+#### Scenario: 清理後圖表不變
+- **WHEN** 對同一資料庫分別在清理前後產出 payload
+- **THEN** activity、measure_bands、sleep_daily、measures 逐位元組相同
+
+#### Scenario: VACUUM 失敗
+- **WHEN** 刪除完成但 VACUUM 失敗（如暫存磁碟不足）
+- **THEN** 訊息說明資料已一致、空間未回收、可稍後重試；資料庫可正常
+  繼續使用
+
+#### Scenario: 文案數字實算
+- **WHEN** 開啟確認文案
+- **THEN** 將刪筆數與目前大小為當下實查值，預估值帶「約」；原始碼中
+  無任何寫死的容量數字
+
+<!-- @trace
+source: display-revamp-bands-cleanup
+updated: 2026-08-19
+code:
+  - docs/verification/display_revamp.md
 -->

@@ -96,3 +96,31 @@ code:
   - docs/verification/karen_reality.md
   - README.md
 -->
+
+---
+### Requirement: 身體數值參考標準條目
+
+身體數值的參考線／參考帶標準 SHALL 以版本化 YAML 維護於 repo
+（建置期轉 JSON 進 bundle，沿 labs 慣例），每條 MUST 含：型別、
+線或帶的數值、標示文字、source_name、source_url、cited_date。
+缺任一欄位 MUST 使建置失敗。顯示時 MUST 帶來源名稱與引用日期。
+非結論式用語約束與過時提醒對本類條目一體適用。
+
+第一版條目 MUST 僅含：血壓居家判準（收縮 130、舒張 80；
+2022 台灣高血壓治療指引，經國健署 722 原則頁轉述）與
+BMI 18.5-24（國健署）。
+
+#### Scenario: 條目欄位齊備
+- **WHEN** 參考標準條目缺 cited_date
+- **THEN** 建置失敗並指出條目名
+
+#### Scenario: 過時提醒涵蓋
+- **WHEN** 參考標準條目的 cited_date 超過一年
+- **THEN** 品質報告將其列入過時清單
+
+<!-- @trace
+source: display-revamp-bands-cleanup
+updated: 2026-08-19
+code:
+  - docs/verification/display_revamp.md
+-->
