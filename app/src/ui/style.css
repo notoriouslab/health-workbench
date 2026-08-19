@@ -65,7 +65,11 @@ button.primary {
 }
 #import-panel {
   background: var(--card); border: none; border-radius: 14px; box-shadow: var(--shadow);
-  padding: 14px 16px; overflow-y: auto; flex: 0 1 auto; min-height: 0;
+  padding: 14px 16px; overflow-y: auto; flex: 0 1 auto;
+  /* 顯示時保有約五行內容的最小高度：判型結果、成員選擇器、開始匯入鈕
+     要同時可見（2026-08-19 走查：被上下區塊擠到剩一行）。hidden 時
+     display:none 不佔位，「平常不顯示」不受影響。 */
+  min-height: 13em;
 }
 #import-confirm p { margin: .3em 0; }
 #import-confirm .fmt { font-size: 16px; font-weight: 700; }
