@@ -572,6 +572,31 @@
   /* ---------- 用藥（分類＋可展開處方時間軸） ---------- */
   const MED_CATS = [["drug", "藥品"], ["tcm", "中醫用藥"], ["order", "診療項目與其他"]];
 
+  /* ---------- 用藥卡的適應症（引述官方登記原文） ----------
+     原文動輒數百字，超過門檻先截斷、由使用者自己按開（元件內部狀態，
+     收合時不影響其他卡片）。許可證版本日期是頁級資訊，讀
+     DATA.meta.drug_cache.license_updated_at，不在每列重複帶。
+     許可證非有效狀態（已註銷／已廢止）是歷史處方的常態，註記用中性
+     語氣、沿既有 .note 樣式，不用警示樣式。舊快取沒有這些欄位時整個
+     區塊不渲染（不留空區塊）。 */
+  const INDICATION_CLAMP = 120;
+
+  function MedIndication({ m }) {
+    const [full, setFull] = useState(false);
+    const text = String(m.indication);
+    const long = text.length > INDICATION_CLAMP;
+    const shown = long && !full ? `${text.slice(0, INDICATION_CLAMP)}…` : text;
+    const ver = DATA.meta.drug_cache && DATA.meta.drug_cache.license_updated_at;
+    return html`<div>
+      <p class="note">官方登記適應症原文${ver ? `（${ver}）` : ""}</p>
+      <p>${shown}${long && html` <button class="catbtn"
+        onClick=${() => setFull(!full)}>${full ? "收合" : "顯示全部"}</button>`}</p>
+      ${m.license_status && html`<p class="note">${
+        `此藥品許可證${m.license_status}（歷史處方仍可對照品項資訊）`}</p>`}
+      ${m.usage_text && html`<p class="note">用法用量（原文）：${m.usage_text}</p>`}
+    </div>`;
+  }
+
   function MedGroup({ g, open, onToggle, go }) {
     const m = g.m;
     const days = g.items.reduce((s, x) => s + (x.days_supply || 0), 0);
@@ -587,6 +612,7 @@
           顯示原始醫囑名稱（診療項目與中藥不在西藥品項檔範圍）</p>`}
         ${m.ingredient && html`<p class="note">成分：${m.ingredient}
           ${m.leaflet_url && html`｜<a href=${m.leaflet_url} target="_blank" rel="noopener">仿單↗</a>`}</p>`}
+        ${m.indication && html`<${MedIndication} m=${m} />`}
         <${DispenseTimeline} items=${g.items} />
         <table><tr><th>日期</th><th>院所</th><th>總量</th><th>天數</th><th></th></tr>
           ${g.items.map((x) => html`<tr class="rowlink"
