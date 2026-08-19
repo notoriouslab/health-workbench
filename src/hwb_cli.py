@@ -52,7 +52,8 @@ def cmd_quality(args):
 
 def cmd_knowledge(args):
     from src.knowledge.drugs import update_cache
-    update_cache(args.db, source=args.source)
+    update_cache(args.db, source_items=args.source_items,
+                 source_licenses=args.source_licenses)
     return 0
 
 
@@ -87,9 +88,12 @@ def main(argv=None):
     p_status.set_defaults(func=cmd_status)
 
     p_knowledge = sub.add_parser("knowledge", help="knowledge 對照維護")
-    p_knowledge.add_argument("action", choices=["update"], help="update：下載藥品品項快取")
-    p_knowledge.add_argument("--source", type=Path, default=None,
-                             help="改用本地 CSV（離線/測試用）")
+    p_knowledge.add_argument("action", choices=["update"],
+                             help="update：下載藥品品項與許可證快取")
+    p_knowledge.add_argument("--source-items", type=Path, default=None,
+                             help="改用本地品項檔 CSV（離線/測試用）")
+    p_knowledge.add_argument("--source-licenses", type=Path, default=None,
+                             help="改用本地許可證檔 CSV 或 ZIP（離線/測試用）")
     p_knowledge.set_defaults(func=cmd_knowledge)
 
     p_quality = sub.add_parser("quality", help="輸出全庫品質報告（唯讀）")
