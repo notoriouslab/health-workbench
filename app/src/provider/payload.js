@@ -4,12 +4,17 @@
 // 比對 Python build_payload 輸出數值全等（generated_at 除外）。
 import { attachDrugs } from "../knowledge/drugs.js";
 import { requireProfile } from "../engine/profiles.js";
+import { PER_ROW_TYPES } from "../engine/aggregate.js";
 
 const TREND_EXCLUDE = "quality_flags NOT LIKE '%epoch_placeholder_date%'"
   + " AND quality_flags NOT LIKE '%out_of_range%'";
 
 const COUNTING_TYPES = ["步數", "步行跑步距離", "騎車距離", "爬樓層數", "活動能量", "基礎能量"];
-const MEASURE_TYPES = ["體重", "BMI", "體脂率", "收縮壓", "舒張壓", "心率", "血氧"];
+// 中位數組＝逐筆保留清單全等（app-viewer「DataProvider 契約」：帶狀型別
+// 誤入這組的話，釋放空間刪 raw 後圖會破且無錯誤訊息）；帶狀組讀 apple_daily。
+// 與 src/dashboard/embed.py 的同名常數必須同值（band_types.test.mjs 釘住）。
+export const MEDIAN_TYPES = PER_ROW_TYPES;
+export const BAND_TYPES = ["心率", "血氧", "呼吸速率"];
 
 const TABLES = ["profiles", "source_documents", "encounters", "medications",
   "lab_results", "reports", "immunizations", "body_measurements",
@@ -117,6 +122,41 @@ async function dailyCountingSeries(driver, typeZh, profileId) {
   return rows.filter(r => r.v !== null).map(r => [r.d, pyRound(r.v, 1)]);
 }
 
+// 帶狀組：每日 [day, avg, min, max]（change display-revamp-bands-cleanup
+// D1）。讀彙總表而非 raw——釋放空間刪 raw 後仍須可繪。epoch 旗標排除、
+// partial_reimport_skipped 保留（該列數值仍是既有最完整值），TREND_EXCLUDE
+// 恰好是這個語意（out_of_range 不會出現在 apple_daily）。
+// 同日多來源合併為單點：avg = SUM(sum_v)/SUM(n) 與全體 raw 直算精確全等
+// （不是加權近似），min/max 取跨來源極值。捨入以 SQL ROUND 取 2 位
+// （「新增彙總 MUST 以 SQL 計算捨入」條文；血氧值域 0-1，1 位會砍光解析度）。
+async function dailyBandSeries(driver, typeZh, profileId) {
+  const rows = await driver.select(`
+    SELECT day d, ROUND(SUM(sum_v)/SUM(n), 2) a, MIN(min_v) lo, MAX(max_v) hi
+    FROM apple_daily
+    WHERE profile_id=? AND type_zh=? AND ${TREND_EXCLUDE}
+    GROUP BY day ORDER BY day`, [profileId, typeZh]);
+  return rows.filter(r => r.a !== null).map(r => [r.d, r.a, r.lo, r.hi]);
+}
+
+// 睡眠每日識別字分鐘（extra_json 原樣帶出，識別字不轉譯）。同日多來源取
+// 分鐘合計最大的單一來源（防雙計，語意同活動類跨來源 MAX；同分以
+// source_name 排序取首，兩端決定性一致）。
+async function sleepDaily(driver, profileId) {
+  const rows = await driver.select(`
+    SELECT day d, extra_json e FROM apple_daily x
+    WHERE x.profile_id=? AND x.type_zh='睡眠' AND x.extra_json IS NOT NULL
+      AND x.quality_flags NOT LIKE '%epoch_placeholder_date%'
+      AND x.source_name = (
+        SELECT y.source_name FROM apple_daily y
+        WHERE y.profile_id = x.profile_id AND y.type_zh = '睡眠'
+          AND y.day = x.day AND y.extra_json IS NOT NULL
+        ORDER BY (SELECT SUM(value) FROM json_each(y.extra_json)) DESC,
+          y.source_name
+        LIMIT 1)
+    ORDER BY d`, [profileId]);
+  return rows.map(r => [r.d, JSON.parse(r.e)]);
+}
+
 async function dailyMeasureSeries(driver, typeZh, profileId) {
   const rows = await driver.select(`
     SELECT substr(start_ts,1,10) d, COALESCE(value_normalized, value_numeric) v
@@ -134,10 +174,11 @@ async function dailyMeasureSeries(driver, typeZh, profileId) {
   });
 }
 
-// knowledgeEntries: labs.json 條目；drugCachePath: drug_items.sqlite 路徑（可 null）
+// knowledgeEntries: labs.json 條目；bodyRefs: body_refs.json 條目（身體數值
+// 參考線，缺省為空＝不畫參考線）；drugCachePath: drug_items.sqlite 路徑（可 null）
 // profileId 必填（app-viewer spec：provider 僅回傳該成員資料）
 export async function buildPayload(driver, { profileId, knowledgeEntries,
-  drugCachePath, today }) {
+  bodyRefs = [], drugCachePath, today }) {
   const profileRow = await requireProfile(driver, profileId);
   const encounters = (await driver.select(`
     SELECT e.id, e.type, e.date, e.facility_name, e.dx_code, e.dx_name,
@@ -203,9 +244,14 @@ export async function buildPayload(driver, { profileId, knowledgeEntries,
     activity[t] = await dailyCountingSeries(driver, t, profileId);
   }
   const measures = {};
-  for (const t of MEASURE_TYPES) {
+  for (const t of MEDIAN_TYPES) {
     measures[t] = await dailyMeasureSeries(driver, t, profileId);
   }
+  const measureBands = {};
+  for (const t of BAND_TYPES) {
+    measureBands[t] = await dailyBandSeries(driver, t, profileId);
+  }
+  const sleepDailySeries = await sleepDaily(driver, profileId);
   const workouts = (await driver.select(`
     SELECT activity, substr(start_ts,1,10) AS date, duration_min, source_name
     FROM apple_workouts WHERE profile_id=? ORDER BY start_ts DESC`, [profileId]))
@@ -250,6 +296,9 @@ export async function buildPayload(driver, { profileId, knowledgeEntries,
     knowledge,
     activity,
     measures,
+    measure_bands: measureBands,
+    sleep_daily: sleepDailySeries,
+    body_refs: bodyRefs,
     workouts,
     cpap,
   };

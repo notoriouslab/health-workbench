@@ -8,14 +8,19 @@
 import json
 from datetime import date
 
+from src.knowledge.body_refs import load_body_refs
 from src.knowledge.drugs import DrugLookup
 from src.knowledge.labs import load_entries
+from src.store.schema import PER_ROW_TYPES
 
 TREND_EXCLUDE = "quality_flags NOT LIKE '%epoch_placeholder_date%' AND quality_flags NOT LIKE '%out_of_range%'"
 
-# 計數型（日加總取最大）vs 量測型（日中位數）
+# 計數型（日加總取最大）vs 中位數型（逐筆保留組全等）vs 帶狀型（讀彙總表）。
+# MEDIAN_TYPES／BAND_TYPES 與 app/src/provider/payload.js 的同名常數必須同值
+# （app/tests/provider/band_types.test.mjs 讀本檔文本比對）。
 COUNTING_TYPES = ["步數", "步行跑步距離", "騎車距離", "爬樓層數", "活動能量", "基礎能量"]
-MEASURE_TYPES = ["體重", "BMI", "體脂率", "收縮壓", "舒張壓", "心率", "血氧"]
+MEDIAN_TYPES = PER_ROW_TYPES
+BAND_TYPES = ["心率", "血氧", "呼吸速率"]
 
 
 def daily_counting_series(store, type_zh):
@@ -29,6 +34,37 @@ def daily_counting_series(store, type_zh):
         WHERE type_zh=? AND {TREND_EXCLUDE}
         GROUP BY day ORDER BY day""", (type_zh,)).fetchall()
     return [[r[0], round(r[1], 1)] for r in rows if r[1] is not None]
+
+
+def daily_band_series(store, type_zh):
+    """帶狀型：每日 [day, avg, min, max]，讀彙總表而非 raw（釋放空間刪
+    raw 後仍須可繪）。同日多來源合併為單點：avg = SUM(sum_v)/SUM(n) 與
+    全體 raw 直算精確全等，min/max 取跨來源極值。epoch 旗標排除、
+    partial_reimport_skipped 保留。"""
+    rows = store.con.execute(f"""
+        SELECT day d, ROUND(SUM(sum_v)/SUM(n), 2) a, MIN(min_v) lo, MAX(max_v) hi
+        FROM apple_daily
+        WHERE type_zh=? AND {TREND_EXCLUDE}
+        GROUP BY day ORDER BY day""", (type_zh,)).fetchall()
+    return [[r[0], r[1], r[2], r[3]] for r in rows if r[1] is not None]
+
+
+def sleep_daily_series(store):
+    """睡眠每日識別字分鐘（extra_json 原樣，識別字不轉譯）。同日多來源取
+    分鐘合計最大的單一來源（防雙計；同分以 source_name 排序取首）。"""
+    rows = store.con.execute("""
+        SELECT day d, extra_json e FROM apple_daily x
+        WHERE x.type_zh='睡眠' AND x.extra_json IS NOT NULL
+          AND x.quality_flags NOT LIKE '%epoch_placeholder_date%'
+          AND x.source_name = (
+            SELECT y.source_name FROM apple_daily y
+            WHERE y.type_zh = '睡眠'
+              AND y.day = x.day AND y.extra_json IS NOT NULL
+            ORDER BY (SELECT SUM(value) FROM json_each(y.extra_json)) DESC,
+              y.source_name
+            LIMIT 1)
+        ORDER BY d""").fetchall()
+    return [[r[0], json.loads(r[1])] for r in rows]
 
 
 def daily_measure_series(store, type_zh):
@@ -106,7 +142,9 @@ def build_payload(store, db_path):
 
     # --- 活動層（日聚合） ---
     activity = {t: daily_counting_series(store, t) for t in COUNTING_TYPES}
-    measures = {t: daily_measure_series(store, t) for t in MEASURE_TYPES}
+    measures = {t: daily_measure_series(store, t) for t in MEDIAN_TYPES}
+    measure_bands = {t: daily_band_series(store, t) for t in BAND_TYPES}
+    sleep_daily = sleep_daily_series(store)
     workouts = [dict(r) for r in con.execute("""
         SELECT activity, substr(start_ts,1,10) AS date, duration_min, source_name
         FROM apple_workouts ORDER BY start_ts DESC""")]
@@ -184,6 +222,9 @@ def build_payload(store, db_path):
         "knowledge": knowledge,
         "activity": activity,
         "measures": measures,
+        "measure_bands": measure_bands,
+        "sleep_daily": sleep_daily,
+        "body_refs": load_body_refs(),
         "workouts": workouts,
         "cpap": cpap,
     }
@@ -191,7 +232,8 @@ def build_payload(store, db_path):
     sizes = {}
     medical_keys = ["encounters", "meds_by_enc", "medications", "labs", "reports",
                     "immunizations", "nhi_body", "knowledge"]
-    activity_keys = ["activity", "measures", "workouts"]
+    activity_keys = ["activity", "measures", "measure_bands", "sleep_daily",
+                     "body_refs", "workouts"]
     for group, keys in [("medical", medical_keys), ("activity", activity_keys),
                         ("meta", ["meta"])]:
         sizes[group] = sum(len(json.dumps(payload[k], ensure_ascii=False).encode())

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<HealthData locale="zh_TW">
+  <Record type="HKQuantityTypeIdentifierHeartRate" sourceName="測試手錶" unit="count/min" startDate="2024-02-01 08:10:00 +0800" endDate="2024-02-01 08:10:00 +0800" value="62"/>
+  <Record type="HKQuantityTypeIdentifierHeartRate" sourceName="測試手錶" unit="count/min" startDate="2024-02-01 12:30:00 +0800" endDate="2024-02-01 12:30:00 +0800" value="75"/>
+  <Record type="HKQuantityTypeIdentifierHeartRate" sourceName="測試手錶" unit="count/min" startDate="2024-02-01 18:45:00 +0800" endDate="2024-02-01 18:45:00 +0800" value="118"/>
+  <Record type="HKQuantityTypeIdentifierHeartRate" sourceName="測試手機" unit="count/min" startDate="2024-02-01 20:00:00 +0800" endDate="2024-02-01 20:00:00 +0800" value="70"/>
+  <Record type="HKQuantityTypeIdentifierHeartRate" sourceName="測試手錶" unit="count/min" startDate="2024-02-02 07:55:00 +0800" endDate="2024-02-02 07:55:00 +0800" value="58"/>
+  <Record type="HKQuantityTypeIdentifierHeartRate" sourceName="測試手錶" unit="count/min" startDate="2024-02-02 21:15:00 +0800" endDate="2024-02-02 21:15:00 +0800" value="90"/>
+  <Record type="HKQuantityTypeIdentifierRestingHeartRate" sourceName="測試手錶" unit="count/min" startDate="2024-02-01 23:59:00 +0800" endDate="2024-02-01 23:59:00 +0800" value="57"/>
+  <Record type="HKQuantityTypeIdentifierRestingHeartRate" sourceName="測試手錶" unit="count/min" startDate="2024-02-02 23:59:00 +0800" endDate="2024-02-02 23:59:00 +0800" value="56"/>
+  <Record type="HKQuantityTypeIdentifierOxygenSaturation" sourceName="測試手錶" unit="%" startDate="2024-02-01 03:00:00 +0800" endDate="2024-02-01 03:00:00 +0800" value="0.98"/>
+  <Record type="HKQuantityTypeIdentifierOxygenSaturation" sourceName="測試手錶" unit="%" startDate="2024-02-01 04:00:00 +0800" endDate="2024-02-01 04:00:00 +0800" value="0.95"/>
+  <Record type="HKQuantityTypeIdentifierRespiratoryRate" sourceName="測試手錶" unit="count/min" startDate="2024-02-01 03:30:00 +0800" endDate="2024-02-01 03:30:00 +0800" value="14.5"/>
+  <Record type="HKQuantityTypeIdentifierRespiratoryRate" sourceName="測試手錶" unit="count/min" startDate="2024-02-01 04:30:00 +0800" endDate="2024-02-01 04:30:00 +0800" value="13.5"/>
+  <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="測試手錶" startDate="2024-02-01 23:05:00 +0800" endDate="2024-02-02 07:05:00 +0800" value="HKCategoryValueSleepAnalysisInBed"/>
+  <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="測試手錶" startDate="2024-02-01 23:20:00 +0800" endDate="2024-02-02 04:20:00 +0800" value="HKCategoryValueSleepAnalysisAsleepCore"/>
+  <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="測試手錶" startDate="2024-02-02 04:20:00 +0800" endDate="2024-02-02 05:20:00 +0800" value="HKCategoryValueSleepAnalysisAsleepDeep"/>
+  <Record type="HKCategoryTypeIdentifierSleepAnalysis" sourceName="測試手機" startDate="2024-02-01 23:00:00 +0800" endDate="2024-02-02 05:40:00 +0800" value="HKCategoryValueSleepAnalysisInBed"/>
+  <Record type="HKQuantityTypeIdentifierAppleWalkingSteadiness" sourceName="測試手機" unit="%" startDate="2024-02-01 09:00:00 +0800" endDate="2024-02-01 09:00:00 +0800" value="0.95"/>
+  <Record type="HKQuantityTypeIdentifierHeight" sourceName="測試手機" unit="cm" startDate="2024-02-01 08:00:00 +0800" endDate="2024-02-01 08:00:00 +0800" value="175"/>
+  <Record type="HKQuantityTypeIdentifierLeanBodyMass" sourceName="測試體重計" unit="kg" startDate="2024-02-01 08:00:00 +0800" endDate="2024-02-01 08:00:00 +0800" value="55.2"/>
+</HealthData>

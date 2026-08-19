@@ -16,6 +16,10 @@ import { assemble, validateShape, toEmbeddedJson } from "../../src/provider/asse
 const REPO = new URL("../../..", import.meta.url).pathname;
 const LAB_ENTRIES = JSON.parse(
   readFileSync(new URL("../../src/knowledge/labs.json", import.meta.url), "utf-8"));
+// Python 端 build_payload 讀 body_refs.yaml，JS 端傳建置產物 json：
+// 兩者同源（body_refs_json_fresh 守衛），parity 全等即證兩端一致
+const BODY_REFS = JSON.parse(
+  readFileSync(new URL("../../src/knowledge/body_refs.json", import.meta.url), "utf-8"));
 
 // 建一個含兩來源的庫（檔案落地，Python 端要讀同一顆）
 async function buildDb(dbPath) {
@@ -29,6 +33,11 @@ async function buildDb(dbPath) {
     d, null, { labEntries: LAB_ENTRIES, profileId: pid });
   await appleHealthAdapter.importSource(
     await nodeFileSource(`${REPO}/tests/fixtures/apple_sample.xml`), d, null,
+    { profileId: pid });
+  // Watch 樣態素材（心率多筆／日、睡眠多識別字含雙來源同日、呼吸速率、
+  // 血氧）：讓 measure_bands 與 sleep_daily 在兩端 parity 中有非空內容
+  await appleHealthAdapter.importSource(
+    await nodeFileSource(`${REPO}/tests/fixtures/apple_watch_sample.xml`), d, null,
     { profileId: pid });
   return d;
 }
@@ -54,7 +63,7 @@ test("provider 同構：JS payload 與 Python build_payload 數值全等", async
   const tmp = mkdtempSync(path.join(tmpdir(), "hwb-prov-"));
   const dbPath = path.join(tmp, "db.sqlite");
   const d = await buildDb(dbPath);
-  const js = await buildPayload(d, { profileId: d.pid,
+  const js = await buildPayload(d, { profileId: d.pid, bodyRefs: BODY_REFS,
     knowledgeEntries: LAB_ENTRIES, drugCachePath: null, today: "2026-08-09" });
   await d.close();
   assert.deepEqual(validateShape(js), []);
@@ -66,7 +75,7 @@ test("匯出同構：assemble 輸出的嵌入資料與 hwb rebuild 產出全等"
   const tmp = mkdtempSync(path.join(tmpdir(), "hwb-exp-"));
   const dbPath = path.join(tmp, "db.sqlite");
   const d = await buildDb(dbPath);
-  const js = await buildPayload(d, { profileId: d.pid,
+  const js = await buildPayload(d, { profileId: d.pid, bodyRefs: BODY_REFS,
     knowledgeEntries: LAB_ENTRIES, drugCachePath: null, today: "2026-08-09" });
   await d.close();
 
