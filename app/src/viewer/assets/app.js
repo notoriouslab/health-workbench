@@ -696,9 +696,49 @@
   }
 
   /* ---------- 趨勢 ---------- */
+  /* 檢驗參考值字串 → null（不畫）／{ band:[lo,hi] }（灰帶）／
+     { limit, kind:"upper"|"lower" }（單條參考線）。判定依 design D5 五步
+     短路，順序不可調換：
+     1. 全字串恰為 NHI 雙欄形 `[左][右]`（欄內無括號）→ 兩側各自先試範圍
+        （`低-高`／`低~高`，取該側首個配對），無範圍才取第一個數值（容許
+        `= 7.0` 這種前綴）；「無」「.」等無數可取＝該側缺。帶＝[左 lo, 右 hi]，
+        僅單側有數＝一側性，兩側皆缺＝null，組合後 lo ≥ hi 也 null
+        （本機庫真有「兩欄各塞完整範圍且左右相同」一族，如 `[0~41][0~41]`，
+        只取首數會畫出零高度帶＝錯畫）。
+     2. 其餘含 `[` 的字串一律 null：年齡分段複合值（`[[0-14d]144-450 …]`）
+        與一切未知括號形。**不畫比錯畫好**——舊版首個配對會把「0-14 天」
+        當成參考帶 [0,14] 畫在圖上。
+     3-5. 無括號者：試範圍 → 試一側性符號 → 皆不符 null。 */
+  const REF_PAIR = /[+]?(-?\d+\.?\d*)\s*[-–~]\s*[+]?(-?\d+\.?\d*)/;
+  const REF_NUM = /-?\d+(?:\.\d+)?/;
+  /* 雙欄形的單側取數：有範圍取其 lo/hi，否則單數同時充當 lo 與 hi */
+  function refSide(t) {
+    const p = REF_PAIR.exec(t || "");
+    if (p) return { lo: parseFloat(p[1]), hi: parseFloat(p[2]) };
+    const n = REF_NUM.exec(t || "");
+    return n ? { lo: parseFloat(n[0]), hi: parseFloat(n[0]) } : null;
+  }
   function parseRef(s) {
-    const m = /\[?\s*[+]?(-?\d+\.?\d*)\s*[-–~]\s*[+]?(-?\d+\.?\d*)\s*\]?/.exec(s || "");
-    return m ? [parseFloat(m[1]), parseFloat(m[2])] : null;
+    const str = s == null ? "" : String(s);
+    const two = /^\[([^\[\]]*)\]\[([^\[\]]*)\]$/.exec(str);
+    if (two) {
+      const l = refSide(two[1]), r = refSide(two[2]);
+      if (l && r) return l.lo < r.hi ? { band: [l.lo, r.hi] } : null;
+      if (l) return { limit: l.lo, kind: "lower" };
+      if (r) return { limit: r.hi, kind: "upper" };
+      return null;
+    }
+    if (str.includes("[")) return null;
+    const p = REF_PAIR.exec(str);
+    if (p) return { band: [parseFloat(p[1]), parseFloat(p[2])] };
+    const n = REF_NUM.exec(str);
+    if (n) {
+      const upper = /[<≦≤]|以下/.test(str), lower = /[>≧≥]|以上/.test(str);
+      if (upper && lower) return null;   // 雙向符號並存＝語意不明，保守不畫
+      if (upper) return { limit: parseFloat(n[0]), kind: "upper" };
+      if (lower) return { limit: parseFloat(n[0]), kind: "lower" };
+    }
+    return null;
   }
 
   /* 趨勢序列集合＝該分頁繪製的全部序列（檢驗、測量、睡眠呼吸各自一組；
@@ -781,7 +821,14 @@
     const { range, setRange, dom, showAll, rangeLabel } = rangeState;
     const rows = (labNames.find(([n]) => n === sel) || [null, []])[1];
     const numRows = rows.filter((l) => l.value_numeric != null);
-    const ref = numRows.length ? parseRef(numRows[numRows.length - 1].ref_range) : null;
+    const refRaw = numRows.length ? numRows[numRows.length - 1].ref_range : null;
+    const ref = parseRef(refRaw);              // 無數值列時 refRaw 為 null → null
+    // 三形態：帶走灰帶（refRange），一側性走單條參考線（refLines，值參與
+    // y 域故不會落在域外），null 則兩者皆不傳；說明文字隨形態切換
+    const refBand = ref && ref.band ? ref.band : null;
+    const refKindZh = ref && ref.kind === "lower" ? "下限" : "上限";
+    const refLines = ref && ref.limit != null
+      ? [{ v: ref.limit, label: `參考${refKindZh} ${ref.limit}` }] : null;
     // 檢驗在當前區間內有無數值點（無則不印灰帶說明，避免說明沒有的東西）
     const labInRange = inRange(numRows.map((l) => [l.test_date, l.value_numeric]),
       dom.tMin, dom.tMax).length > 0;
@@ -795,11 +842,13 @@
         ${labNames.map(([n, arr]) => html`<option value=${n}>${n}（${arr.length} 筆）</option>`)}
       </select></div>
       ${numRows.length > 0
-        ? html`<${LineChart} unit="" refRange=${ref} domain=${dom} onShowAll=${showAll} rangeLabel=${rangeLabel}
+        ? html`<${LineChart} unit="" refRange=${refBand} refLines=${refLines} domain=${dom}
+            onShowAll=${showAll} rangeLabel=${rangeLabel}
             series=${[{ label: sel, color: "var(--s1)",
                         points: numRows.map((l) => [l.test_date, l.value_numeric]) }]} />`
         : html`<p class="note">此項目為文字型結果，僅列表不繪圖。</p>`}
-      ${ref && labInRange && html`<p class="note">灰帶為最近一次報告之參考值區間 ${numRows[numRows.length - 1].ref_range}</p>`}
+      ${refBand && labInRange && html`<p class="note">灰帶為最近一次報告之參考值區間 ${refRaw}</p>`}
+      ${refLines && labInRange && html`<p class="note">虛線為最近一次報告之參考${refKindZh} ${refRaw}</p>`}
       ${know && html`<p class="know">${know.description}<br />
         <span class="dt">來源：<a href=${know.source_url} target="_blank" rel="noopener">${know.source_name}</a>
         （引用日期 ${know.cited_date}）</span></p>`}

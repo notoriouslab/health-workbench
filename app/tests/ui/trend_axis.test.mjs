@@ -373,7 +373,8 @@ test("刻度相鄰間距足夠（不重疊）", async () => {
 test("切區間後 y 軸重算", async () => {
   const { root, flush } = await trends(await shapePayload());
   const yLabels = () => {
-    // 抓體重圖：檢驗圖的上下界被參考值灰帶固定，不隨區間變動（正確行為）
+    // 抓體重圖：本測試只驗「上下界隨區間重算」，不牽動檢驗圖的參考值形態
+    // （fixture 的 `[0.7-1.3]` 屬未知括號形，parseRef 保守不畫，見 design D5）
     const s = svgs(root).find((x) => legend(x).some((t) => t.textContent.startsWith("體重")));
     assert.ok(s, "找不到體重圖");
     return inSvg(s, "text").filter((t) => num(t, "x") < PL).map((t) => t.textContent).join("|");
