@@ -114,6 +114,15 @@ def build_payload(store, db_path):
             m["drug_zh"] = drug["name_zh"]
             m["ingredient"] = drug["ingredient"]
             m["leaflet_url"] = drug["leaflet_url"]
+            # 許可證欄位（design D3）：舊快取無這些欄 → 不設鍵；有欄值為 NULL →
+            # 設 None。鍵集合與值 MUST 與 payload.js 逐字同形（parity 全等對帳）。
+            # license_id 不進 payload（顯示層用不到）。
+            if "indication" in drug:
+                m["indication"] = drug["indication"]
+            if "usage_text" in drug:
+                m["usage_text"] = drug["usage_text"]
+            if "license_status" in drug:
+                m["license_status"] = drug["license_status"]
         medications.append(m)
         meds_by_enc.setdefault(m["encounter_id"], []).append(m["id"])
     drug_cache_meta = lookup.meta()

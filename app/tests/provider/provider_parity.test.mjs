@@ -42,6 +42,52 @@ async function buildDb(dbPath) {
   return d;
 }
 
+// 迷你 drug 快取 fixture（design D6 五列固定樣態）：schema 與
+// src/knowledge/drugs.py 的 _write_cache 同形（drug_items 12 欄＋cache_meta
+// 四鍵），日期寫固定字串保證兩端可重現。建在 db 同目錄、檔名 drug_items.sqlite
+// ——Python 端 DrugLookup 由 db 路徑推同目錄同名檔（drugs.py cache_path），
+// JS 端由 buildPayload 的 drugCachePath 指過來，兩端讀同一顆。
+// 醫囑代碼取自 tests/fixtures/nhi_sample.json 的用藥列：XX00000001／
+// XX00000002／XX00000003（r1 西醫）、A000000000（r9 中藥）；89001C00
+// （r3 牙科醫令）故意不入快取＝樣態 (e) lookup miss。
+async function buildDrugCache(dbPath) {
+  const cachePath = path.join(path.dirname(dbPath), "drug_items.sqlite");
+  const d = new NodeDriver(cachePath);
+  await d.execute(`CREATE TABLE drug_items(
+    code TEXT PRIMARY KEY, name_en TEXT, name_zh TEXT, ingredient TEXT,
+    dosage_form TEXT, atc TEXT, leaflet_url TEXT, valid_until TEXT,
+    license_id TEXT, indication TEXT, usage_text TEXT, license_status TEXT)`);
+  await d.execute("CREATE TABLE cache_meta(key TEXT PRIMARY KEY, value TEXT)");
+  for (const row of [
+    // (a) 有適應症＋license_status 空字串（有效）＋有用法用量
+    ["XX00000001", "TESTDRUG A", "測試藥品甲", "testium", "錠", "N02BE01",
+      "https://example.invalid/leaflet?licId=01049322", "1150101",
+      "01049322", "測試適應症原文甲", "測試用法用量甲", ""],
+    // (b) 有適應症＋有效＋用法用量 NULL（28% 才有值）
+    ["XX00000002", "TESTDRUG B", "測試藥品乙", "testium b", "膠囊", "N02BE02",
+      "https://example.invalid/leaflet?licId=01049323", "1150201",
+      "01049323", "測試適應症原文乙", null, ""],
+    // (c) 有適應症＋已註銷（非有效狀態是常態）＋用法用量 NULL
+    ["XX00000003", "TESTDRUG C", "測試藥品丙", "testium c", "軟膏", "D02AB00",
+      "https://example.invalid/leaflet?licId=01049324", "1150301",
+      "01049324", "測試適應症原文丙", null, "已註銷"],
+    // (d) 許可證 join 未命中：新欄全 NULL、既有欄有值
+    ["A000000000", "TESTHERB", "測試科學中藥", "testherbium", "散劑", null,
+      "https://example.invalid/leaflet?licId=99999999", "1150401",
+      null, null, null, null],
+  ]) {
+    await d.execute("INSERT INTO drug_items VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", row);
+  }
+  for (const kv of [["updated_at", "2026-08-19"],
+    ["dataset_url", "https://data.gov.tw/dataset/23715"],
+    ["license_dataset_url", "https://data.gov.tw/dataset/9122"],
+    ["license_updated_at", "2026-08-19"]]) {
+    await d.execute("INSERT INTO cache_meta VALUES(?,?)", kv);
+  }
+  await d.close();
+  return cachePath;
+}
+
 function pyPayload(dbPath) {
   const out = execFileSync("python3", ["-c", [
     "import json, sys",
@@ -63,11 +109,28 @@ test("provider 同構：JS payload 與 Python build_payload 數值全等", async
   const tmp = mkdtempSync(path.join(tmpdir(), "hwb-prov-"));
   const dbPath = path.join(tmp, "db.sqlite");
   const d = await buildDb(dbPath);
+  const drugCachePath = await buildDrugCache(dbPath);
   const js = await buildPayload(d, { profileId: d.pid, bodyRefs: BODY_REFS,
-    knowledgeEntries: LAB_ENTRIES, drugCachePath: null, today: "2026-08-09" });
+    knowledgeEntries: LAB_ENTRIES, drugCachePath, today: "2026-08-09" });
   await d.close();
   assert.deepEqual(validateShape(js), []);
+
+  // fixture 真的讓 drug 欄位有內容（防「兩端都沒帶新欄也全等」的空對帳）
+  const byCode = {};
+  for (const m of js.medications) byCode[m.order_code] = m;
+  assert.equal(byCode["XX00000001"].indication, "測試適應症原文甲");
+  assert.equal(byCode["XX00000001"].usage_text, "測試用法用量甲");
+  assert.equal(byCode["XX00000001"].license_status, "");
+  assert.equal(byCode["XX00000002"].usage_text, null);
+  assert.equal(byCode["XX00000003"].license_status, "已註銷");
+  assert.equal(byCode["A000000000"].indication, null);
+  assert.equal("indication" in byCode["89001C00"], false); // 樣態 (e) lookup miss
+
   const py = pyPayload(dbPath);
+  // 版本日期傳遞鏈（design D3）：cache_meta 新鍵經 meta() 進 payload
+  assert.equal(js.meta.drug_cache.license_updated_at, "2026-08-19");
+  assert.equal(py.meta.drug_cache.license_updated_at,
+    js.meta.drug_cache.license_updated_at);
   assert.deepEqual(stripTs(JSON.parse(JSON.stringify(js))), stripTs(py));
 });
 
@@ -75,8 +138,9 @@ test("匯出同構：assemble 輸出的嵌入資料與 hwb rebuild 產出全等"
   const tmp = mkdtempSync(path.join(tmpdir(), "hwb-exp-"));
   const dbPath = path.join(tmp, "db.sqlite");
   const d = await buildDb(dbPath);
+  const drugCachePath = await buildDrugCache(dbPath);
   const js = await buildPayload(d, { profileId: d.pid, bodyRefs: BODY_REFS,
-    knowledgeEntries: LAB_ENTRIES, drugCachePath: null, today: "2026-08-09" });
+    knowledgeEntries: LAB_ENTRIES, drugCachePath, today: "2026-08-09" });
   await d.close();
 
   const assets = {

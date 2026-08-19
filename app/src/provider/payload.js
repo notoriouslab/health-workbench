@@ -204,6 +204,12 @@ export async function buildPayload(driver, { profileId, knowledgeEntries,
       m.drug_zh = drug.name_zh;
       m.ingredient = drug.ingredient;
       m.leaflet_url = drug.leaflet_url;
+      // 許可證欄位（design D3）：舊快取無這些欄 → 不設鍵；有欄值為 NULL →
+      // 設 null。鍵集合與值 MUST 與 embed.py 逐字同形（parity 全等對帳）。
+      // license_id 不進 payload（顯示層用不到）。
+      if ("indication" in drug) m.indication = drug.indication;
+      if ("usage_text" in drug) m.usage_text = drug.usage_text;
+      if ("license_status" in drug) m.license_status = drug.license_status;
     }
     medications.push(m);
     (medsByEnc[m.encounter_id] = medsByEnc[m.encounter_id] || []).push(m.id);
