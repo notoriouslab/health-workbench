@@ -14,6 +14,49 @@
   const cpapSeries = (field) => CPAP_DAILY
     .filter((r) => r[field] != null).map((r) => [r.date, r[field]]);
 
+  /* ---------- Apple 睡眠（sleep_daily：[day, {識別字: 分鐘}]） ---------- */
+  const SLEEP_DAILY = DATA.sleep_daily || [];
+  const SLEEP_PREFIX = "HKCategoryValueSleepAnalysis";
+  // 總睡眠＝識別字（去前綴後）以 Asleep 開頭者合計；未知識別字不計入
+  // 總數（語意不明寧可少算），但分項照原名列出
+  const asleepMinutes = (o) => Object.entries(o)
+    .filter(([k]) => k.startsWith(SLEEP_PREFIX + "Asleep"))
+    .reduce((a, [, v]) => a + v, 0);
+  const SLEEP_HOURS = SLEEP_DAILY
+    .map(([d, o]) => [d, Math.round((asleepMinutes(o) / 60) * 10) / 10])
+    .filter((p) => p[1] > 0);
+  const HAS_SLEEP = SLEEP_DAILY.length > 0;
+  const SLEEP_ZH = { InBed: "躺床", AsleepUnspecified: "睡眠（未分類）",
+    AsleepCore: "核心", AsleepDeep: "深層", AsleepREM: "快速動眼", Awake: "清醒" };
+  const sleepIdentZh = (k) => {
+    const s = k.startsWith(SLEEP_PREFIX) ? k.slice(SLEEP_PREFIX.length) : k;
+    return SLEEP_ZH[s] || k;   // 未知識別字顯示原名，不丟棄
+  };
+
+  /* ---------- 身體數值參考標準（body_refs：knowledge 條目承載） ----------
+     標準值不寫死在本檔：條目被移除時對應參考線就消失（spec「身體數值的
+     參考線」）。顯示帶來源與引用日期，措辭為「參考」、無判定字樣。 */
+  const BODY_REFS = DATA.body_refs || [];
+  const refsFor = (t) => BODY_REFS.filter((r) => r.type_zh === t);
+  const refLinesFor = (types) => types.flatMap(refsFor)
+    .filter((r) => r.kind === "line").map((r) => ({ v: r.value, label: r.label }));
+  const refBandFor = (t) => {
+    const b = refsFor(t).find((r) => r.kind === "band");
+    return b ? [b.lo, b.hi] : null;
+  };
+  const refNote = (types) => {
+    const rs = types.flatMap(refsFor);
+    if (!rs.length) return null;
+    const bySrc = new Map();
+    for (const r of rs) {
+      const k = `${r.source_name}（引用日期 ${r.cited_date}）`;
+      if (!bySrc.has(k)) bySrc.set(k, []);
+      bySrc.get(k).push(r.label);
+    }
+    return [...bySrc.entries()]
+      .map(([src, labels]) => `${labels.join("、")}：${src}`).join("；");
+  };
+
   // 視窗/分頁標題帶成員名（2026-08-10 走查回饋：多成員一目瞭然）
   if (DATA.meta.profile) document.title = DATA.meta.profile + " 的個人健康資料工作台（私人）";
   const { h, render } = preact;
@@ -171,7 +214,11 @@
   // 無區間控制項的圖（總覽卡）不得套用「不畫標記」那一段：使用者在那裡
   // 沒有切區間的手段可以把逐點數值提示要回來，故上限放寬到不歸零
   const MARK_NO_RANGE = Math.ceil(CH_PW / 1.8);    // 396 點
-  function LineChart({ series, unit, refRange, domain, note, onShowAll,
+  /* 帶狀序列：series 另帶 band=[[date, lo, hi],…]（與 points 的 avg 同日
+     成對）。帶是面不是點：不繪標記、不參與標記門檻；lo/hi 參與 y 域，
+     否則帶會畫出繪圖區。refLines=[{v,label}] 為水平參考虛線（值參與
+     y 域，沿 refRange 前例，否則參考線落在域外看不見）。 */
+  function LineChart({ series, unit, refRange, refLines, domain, note, onShowAll,
     markerLimit = MARK_SMALL, rangeLabel }) {
     const { W, H, PL, PB, PT, PR } = CH;
     const PW = CH_PW;
@@ -179,14 +226,15 @@
     const cleaned = series.map((s) => {
       const r = sanitize(s.points);
       dropped += r.dropped;
-      return { ...s, points: r.kept };
+      return { ...s, points: r.kept, band: s.band ? sanitize(s.band).kept : null };
     });
     const dom = domain || (() => {
       const ts = cleaned.flatMap((s) => s.points.map((p) => tsOf(p[0])));
       return ts.length ? { tMin: Math.min(...ts), tMax: Math.max(...ts) } : null;
     })();
     const scoped = dom
-      ? cleaned.map((s) => ({ ...s, points: inRange(s.points, dom.tMin, dom.tMax) }))
+      ? cleaned.map((s) => ({ ...s, points: inRange(s.points, dom.tMin, dom.tMax),
+          band: s.band ? inRange(s.band, dom.tMin, dom.tMax) : null }))
       : cleaned;
     const drawn = scoped.filter((s) => s.points.length);
     const all = drawn.flatMap((s) => s.points);
@@ -197,8 +245,15 @@
         ${onShowAll && html` <button class="catbtn" onClick=${onShowAll}>看全部</button>`}</p>`;
     }
     const vals = all.map((p) => p[1]);
+    for (const s of drawn) {
+      for (const b of s.band || []) {
+        if (b[1] != null) vals.push(b[1]);
+        if (b[2] != null) vals.push(b[2]);
+      }
+    }
     let lo = Math.min(...vals), hi = Math.max(...vals);
     if (refRange) { lo = Math.min(lo, refRange[0]); hi = Math.max(hi, refRange[1]); }
+    for (const rl of refLines || []) { lo = Math.min(lo, rl.v); hi = Math.max(hi, rl.v); }
     const pad = (hi - lo) * 0.08 || 1; lo -= pad; hi += pad;
     const span = Math.max(dom.tMax - dom.tMin, 1);
     // 座標夾在時間域內：月粒度序列以「月份與區間有交集」納入（見 inRange），
@@ -218,8 +273,11 @@
         class="ax" text-anchor="middle">${tk.label}</text>`);
     const band = refRange ? html`<rect x=${PL} y=${y(refRange[1])} width=${PW}
         height=${Math.max(y(refRange[0]) - y(refRange[1]), 1)} class="refband" />` : null;
+    const rline = (refLines || []).map((rl) => html`<line x1=${PL} y1=${y(rl.v)}
+        x2=${W - PR} y2=${y(rl.v)} class="refline" />
+      <text x=${W - PR - 4} y=${y(rl.v) - 3} class="ax" text-anchor="end">${rl.label}</text>`);
     return html`<div class="chartwrap"><svg viewBox="0 0 ${W} ${H}" width=${W} role="img">
-      ${band}${grid}${xlab}
+      ${band}${grid}${xlab}${rline}
       ${drawn.map((s, si) => {
         const pts = s.points.map((p) => `${x(p[0])},${y(p[1])}`).join(" ");
         const last = s.points[s.points.length - 1];
@@ -228,11 +286,25 @@
         const r = s.marker || (s.points.length > markerLimit ? 0
           : s.points.length > MARK_FULL ? 1.5 : 3);
         const name = s.label.length > 7 ? s.label.slice(0, 6) + "…" : s.label;
+        // 帶（min-max 面）：去程沿 hi、回程沿 lo；單日退化成一段豎線。
+        // 面不繪標記也不參與標記門檻（門檻只管 avg 折線的標記）。
+        const bmap = s.band && s.band.length
+          ? new Map(s.band.map((b) => [b[0], b])) : null;
+        const bandPoly = s.band && s.band.length > 1
+          ? s.band.map((b) => `${x(b[0])},${y(b[2])}`).join(" ") + " "
+            + s.band.slice().reverse().map((b) => `${x(b[0])},${y(b[1])}`).join(" ")
+          : null;
         return html`<g>
+          ${bandPoly && html`<polygon points=${bandPoly} fill=${s.color}
+              fill-opacity="0.15" stroke="none" />`}
+          ${s.band && s.band.length === 1 && html`<line x1=${x(s.band[0][0])}
+              x2=${x(s.band[0][0])} y1=${y(s.band[0][1])} y2=${y(s.band[0][2])}
+              stroke=${s.color} stroke-width="3" opacity="0.3" />`}
           ${s.points.length > 1 && html`<polyline points=${pts} fill="none" stroke=${s.color} stroke-width="2" />`}
           ${r > 0 && s.points.map((p) => html`<circle cx=${x(p[0])} cy=${y(p[1])} r=${r}
               fill=${s.color} stroke=${s.stroke || "none"} stroke-width="2">
-            <title>${s.label} ${p[0]}：${p[1]} ${unit || ""}</title></circle>`)}
+            <title>${s.label} ${p[0]}：${p[1]}${bmap && bmap.get(p[0])
+              ? `（${bmap.get(p[0])[1]}-${bmap.get(p[0])[2]}）` : ""} ${unit || ""}</title></circle>`)}
           <text x=${W - PR + 6} y=${PT + 14 + si * 30} class="ax" fill=${s.color}>${name}</text>
           <text x=${W - PR + 6} y=${PT + 27 + si * 30} class="ax" fill=${s.color}>${last[1]}</text>
         </g>`;
@@ -379,7 +451,7 @@
         </${Card}>
         <${Card} wide icon="🧪" color="var(--s3)" title="最新檢驗（點入看趨勢）">
           <table>${recentLabs.map((l) => html`<tr class="rowlink"
-              onClick=${() => go("trends", { lab: l.name })}>
+              onClick=${() => go("labs", { lab: l.name })}>
             <td>${l.name}</td><td class="num">${l.value_text}</td>
             <td class="dt">${l.ref_range || ""}</td><td class="dt">${l.test_date}</td></tr>`)}
           </table>
@@ -489,6 +561,11 @@
       </div>`)}
           </div>`}
         </div>`)}
+      ${DATA.immunizations.length > 0 && html`<h2>疫苗接種</h2>
+        <div class="card"><table><tr><th>日期</th><th>疫苗</th><th>院所</th></tr>
+          ${DATA.immunizations.map((i) => html`<tr><td class="dt">${i.date}</td>
+            <td>${i.vaccine_name}</td><td class="dt">${i.facility_name || ""}</td></tr>`)}
+        </table></div>`}
     </section>`;
   }
 
@@ -563,20 +640,10 @@
     return m ? [parseFloat(m[1]), parseFloat(m[2])] : null;
   }
 
-  /* 趨勢序列集合：時間域下界、today 與預設區間判定皆以此為準。
-     MUST 含全部檢驗項目而非下拉當前選中者，否則切換檢驗項目會連帶
-     位移另外三張圖的 x 軸。 */
-  function trendBounds() {
-    const groups = [
-      DATA.measures["體重"] || [],
-      // CPAP 日期要納入共用時間域，否則新圖的 x 軸與同頁其他圖不一致
-      cpapSeries("ahi"),
-      DATA.nhi_body.filter((b) => b.weight_kg).map((b) => [b.check_date, b.weight_kg]),
-      DATA.measures["收縮壓"] || [],
-      DATA.measures["舒張壓"] || [],
-      DATA.activity["步數"] || [],
-      DATA.labs.filter((l) => l.value_numeric != null).map((l) => [l.test_date, l.value_numeric]),
-    ];
+  /* 趨勢序列集合＝該分頁繪製的全部序列（檢驗、測量、睡眠呼吸各自一組；
+     spec「趨勢圖以共用時間域定位」）。檢驗分頁 MUST 含全部項目而非下拉
+     當前選中者，否則切換檢驗項目會連帶位移同頁其他圖的 x 軸。 */
+  function pageBounds(groups) {
     const ts = groups.flat().map((p) => tsOf(p[0])).filter((t) => !Number.isNaN(t));
     const gen = tsOf(DATA.meta.generated_at);
     const latest = ts.length ? Math.max(...ts) : NaN;
@@ -585,6 +652,45 @@
     const cands = [gen, latest].filter((t) => !Number.isNaN(t));
     const today = cands.length ? Math.max(...cands) : Date.parse("2000-01-01");
     return { today, latest, earliest: ts.length ? Math.min(...ts) : today };
+  }
+
+  /* 每個趨勢類分頁自己的區間狀態（同頁各圖恆為同一區間；跨頁不連動） */
+  function useRange(groups) {
+    const { today, latest, earliest } = useMemo(() => pageBounds(groups), []);
+    const [range, setRange] = useState(() => defaultRange(today, latest));
+    const dom = rangeDomain(range, today, earliest);
+    const showAll = range === "all" ? null : () => setRange("all");
+    const rangeLabel = (RANGES.find(([k]) => k === range) || [])[1];
+    return { range, setRange, dom, showAll, rangeLabel };
+  }
+
+  function RangeBar({ range, setRange, children }) {
+    return html`<div class="filters">
+      ${RANGES.map(([k, label]) => html`<button class="catbtn ${range === k ? "on" : ""}"
+        onClick=${() => setRange(k)}>${label}</button>`)}
+      ${children}
+    </div>`;
+  }
+
+  /* 0-1 存百分比的型別（血氧、行走穩定度；HealthKit 官方值域）：整序列
+     判定（全部值 ≤ 1.5）後換算為百分比顯示。混不得逐點判定：同一序列
+     兩種值域會畫出鋸齒。 */
+  const isFraction = (vals) => vals.length > 0 && vals.every((v) => v == null || v <= 1.5);
+  const pct = (v) => Math.round(v * 10000) / 100;
+  function scaleSeries(points) {
+    return isFraction(points.map((p) => p[1]))
+      ? points.map(([d, v]) => [d, pct(v)]) : points;
+  }
+  /* measure_bands 的 [day, avg, min, max] → LineChart 的 points＋band */
+  function bandChart(t) {
+    const rows = DATA.measure_bands?.[t] || [];
+    let points = rows.map((r) => [r[0], r[1]]);
+    let band = rows.map((r) => [r[0], r[2], r[3]]);
+    if (isFraction(rows.flatMap((r) => [r[1], r[2], r[3]]))) {
+      points = points.map(([d, v]) => [d, pct(v)]);
+      band = band.map(([d, lo, hi]) => [d, pct(lo), pct(hi)]);
+    }
+    return { points, band };
   }
 
   const RANGES = [["3m", "近三月", 90], ["1y", "近一年", 365], ["all", "全部", null]];
@@ -597,7 +703,8 @@
     return !Number.isNaN(latest) && today - latest <= 90 * DAY ? "1y" : "all";
   }
 
-  function Trends({ focus }) {
+  /* ---------- 檢驗分頁：項目清單＋選中項趨勢＋逐筆表 ---------- */
+  function Labs({ focus }) {
     const labNames = useMemo(() => {
       const names = {};
       DATA.labs.forEach((l) => (names[l.name] = names[l.name] || []).push(l));
@@ -606,11 +713,11 @@
     const init = focus && focus.lab && labNames.some(([n]) => n === focus.lab)
       ? focus.lab : (labNames.length ? labNames[0][0] : "");
     const [sel, setSel] = useState(init);
-    const { today, latest, earliest } = useMemo(trendBounds, []);
-    const [range, setRange] = useState(() => defaultRange(today, latest));
-    const dom = rangeDomain(range, today, earliest);
-    const showAll = range === "all" ? null : () => setRange("all");
-    const rangeLabel = (RANGES.find(([k]) => k === range) || [])[1];
+    // 時間域集合＝全部可繪圖檢驗項目（非當前選中），切換項目不位移 x 軸
+    const rangeState = useRange([
+      DATA.labs.filter((l) => l.value_numeric != null)
+        .map((l) => [l.test_date, l.value_numeric])]);
+    const { range, setRange, dom, showAll, rangeLabel } = rangeState;
     const rows = (labNames.find(([n]) => n === sel) || [null, []])[1];
     const numRows = rows.filter((l) => l.value_numeric != null);
     const ref = numRows.length ? parseRef(numRows[numRows.length - 1].ref_range) : null;
@@ -618,22 +725,11 @@
     const labInRange = inRange(numRows.map((l) => [l.test_date, l.value_numeric]),
       dom.tMin, dom.tMax).length > 0;
     const know = DATA.knowledge[sel];
-    const weightSeries = [
-      { label: "體重（自主量測）", color: "var(--s1)", points: DATA.measures["體重"] || [] },
-      { label: "成健", color: "var(--s2)", marker: 6, stroke: "var(--card)",
-        points: DATA.nhi_body.filter((b) => b.weight_kg).map((b) => [b.check_date, b.weight_kg]) },
-    ];
-    const bpSeries = [
-      { label: "收縮壓", color: "var(--s1)", points: DATA.measures["收縮壓"] || [] },
-      { label: "舒張壓", color: "var(--s2)", points: DATA.measures["舒張壓"] || [] },
-    ];
+    if (!labNames.length) return html`<section><p class="note">尚無檢驗資料。</p></section>`;
     return html`<section>
-      <div class="filters">
-        ${RANGES.map(([k, label]) => html`<button class="catbtn ${range === k ? "on" : ""}"
-          onClick=${() => setRange(k)}>${label}</button>`)}
-        <span class="note">四張圖共用同一時間區間，可直接同期對照</span>
-      </div>
-      <h2>檢驗趨勢</h2>
+      <${RangeBar} range=${range} setRange=${setRange}>
+        <span class="note">本頁各圖共用同一時間區間</span>
+      </${RangeBar}>
       <div class="filters"><select value=${sel} onChange=${(e) => setSel(e.target.value)}>
         ${labNames.map(([n, arr]) => html`<option value=${n}>${n}（${arr.length} 筆）</option>`)}
       </select></div>
@@ -650,36 +746,152 @@
         ${rows.slice().reverse().map((l) => html`<tr><td class="dt">${l.test_date}</td>
           <td class="num">${l.value_text}${l.unmapped ? html` <span class="flag">unmapped</span>` : ""}</td>
           <td class="dt">${l.ref_range || "—"}</td><td class="dt">${l.facility_name}</td></tr>`)}</table>
-      <h2>體重（Apple 每日中位數＋健保成健標記）</h2>
-      <${LineChart} unit="kg" series=${weightSeries} domain=${dom} onShowAll=${showAll} rangeLabel=${rangeLabel} />
-      <h2>血壓（每日中位數）</h2>
-      <${LineChart} unit="mmHg" series=${bpSeries} domain=${dom} onShowAll=${showAll} rangeLabel=${rangeLabel} />
-      ${HAS_CPAP && html`<h2>每晚 AHI（睡眠呼吸）</h2>
-        <${LineChart} unit="次/小時" domain=${dom} onShowAll=${showAll} rangeLabel=${rangeLabel}
-          note="日期為入睡當晚；與上方體重圖共用同一時間區間，可直接同期對照"
-          series=${[{ label: "AHI", color: "var(--s3)", points: cpapSeries("ahi") }]} />`}
-      <h2>日均步數（每日單一來源最大值）</h2>
-      <${LineChart} unit="步" domain=${dom} onShowAll=${showAll} rangeLabel=${rangeLabel}
-        note=${range === "3m" ? "逐日" : "月平均"}
-        series=${[{ label: "日均步數", color: "var(--s1)",
-          points: range === "3m" ? (DATA.activity["步數"] || [])
-            : monthlyAvg(DATA.activity["步數"] || []) }]} />
+      <h2>全部項目（${labNames.length}）</h2>
+      <div class="card">${labNames.map(([n, arr]) => html`
+        <div class="rowlink srow" onClick=${() => setSel(n)}>
+          <span>${n}</span><span class="dt">${arr.length} 筆</span>
+          <span class="dt">最近 ${arr[arr.length - 1].test_date}＝${arr[arr.length - 1].value_text}</span>
+          <span class="go">›</span></div>`)}</div>
+    </section>`;
+  }
+
+  /* ---------- 測量分頁：身體／循環／活動／其他四子區塊 ---------- */
+  function Measures() {
+    const m = (t) => DATA.measures[t] || [];
+    const act = (t) => DATA.activity[t] || [];
+    const hr = bandChart("心率");
+    const spo2 = bandChart("血氧");
+    const steadiness = scaleSeries(m("行走穩定度"));
+    const nhiWeight = DATA.nhi_body.filter((b) => b.weight_kg)
+      .map((b) => [b.check_date, b.weight_kg]);
+    const workouts = DATA.workouts || [];
+    // CPAP 的 AHI 也在本頁（同期對照 requirement），日期納入時間域
+    const rangeState = useRange([
+      m("體重"), nhiWeight, m("BMI"), m("體脂率"), m("除脂體重"), steadiness,
+      m("收縮壓"), m("舒張壓"), hr.points, m("安靜心率"), spo2.points,
+      act("步數"), act("步行跑步距離"), act("騎車距離"), act("爬樓層數"),
+      act("活動能量"), act("基礎能量"), cpapSeries("ahi")]);
+    const { range, setRange, dom, showAll, rangeLabel } = rangeState;
+    const [openWYear, setOpenWYear] = useState(null);
+
+    // 圖有全期資料才渲染（「無資料不留空區塊」；區間內無資料的既有
+    // 「看全部」訊息由 LineChart 自己處理）
+    const chart = (title, props) => {
+      if (!props.series.some((s) => (s.points || []).length)) return null;
+      return html`<h3>${title}</h3>
+        <${LineChart} domain=${dom} onShowAll=${showAll} rangeLabel=${rangeLabel} ...${props} />`;
+    };
+    const block = (name, items) => {
+      const kept = items.filter(Boolean);
+      return kept.length ? html`<h2>${name}</h2>${kept}` : null;
+    };
+
+    // 運動記錄：依年分層摺疊（沿就醫時間軸模式，平鋪會隨年數線性增長）
+    const workoutsByYear = [];
+    for (const w of workouts) {
+      const y = String(w.date || "").slice(0, 4) || "未知";
+      const last = workoutsByYear[workoutsByYear.length - 1];
+      if (last && last.year === y) last.items.push(w);
+      else workoutsByYear.push({ year: y, items: [w] });
+    }
+    const workoutList = workouts.length ? html`<h3>運動記錄（${workouts.length} 次）</h3>
+      ${workoutsByYear.map((y) => html`
+        <div class="event ${openWYear === y.year ? "open" : ""}">
+          <div class="evhead rowlink"
+            onClick=${() => setOpenWYear(openWYear === y.year ? null : y.year)}>
+            <b>${y.year} 年</b><span class="note">${y.items.length} 次</span>
+            <span class="note" style="margin-left:auto">${openWYear === y.year ? "▴" : "▾"}</span>
+          </div>
+          ${openWYear === y.year && html`<div class="evbody">
+            <table><tr><th>日期</th><th>類型</th><th>時長</th><th>來源</th></tr>
+              ${y.items.map((w) => html`<tr><td class="dt">${w.date}</td>
+                <td>${w.activity}</td>
+                <td class="num">${w.duration_min != null ? `${Math.round(w.duration_min)} 分` : "—"}</td>
+                <td class="dt">${w.source_name || ""}</td></tr>`)}</table>
+          </div>`}
+        </div>`)}` : null;
+
+    const height = m("身高");
+    const body = block("身體", [
+      chart("體重", { unit: "kg", series: [
+        { label: "體重（自主量測）", color: "var(--s1)", points: m("體重") },
+        { label: "成健", color: "var(--s2)", marker: 6, stroke: "var(--card)", points: nhiWeight }] }),
+      chart("BMI", { unit: "", refRange: refBandFor("BMI"), note: refNote(["BMI"]),
+        series: [{ label: "BMI", color: "var(--s1)", points: m("BMI") }] }),
+      chart("體脂率", { unit: "%", series: [{ label: "體脂率", color: "var(--s4)", points: m("體脂率") }] }),
+      chart("除脂體重", { unit: "kg", series: [{ label: "除脂體重", color: "var(--s3)", points: m("除脂體重") }] }),
+      chart("行走穩定度", { unit: "%",
+        note: "Apple 依此值評估行走穩定，分級請見 iPhone 健康 App",
+        series: [{ label: "行走穩定度", color: "var(--s1)", points: steadiness }] }),
+    ]);
+    const circ = block("循環", [
+      chart("血壓（每日中位數）", { unit: "mmHg",
+        refLines: refLinesFor(["收縮壓", "舒張壓"]),
+        note: refNote(["收縮壓", "舒張壓"]),
+        series: [
+          { label: "收縮壓", color: "var(--s1)", points: m("收縮壓") },
+          { label: "舒張壓", color: "var(--s2)", points: m("舒張壓") }] }),
+      chart("心率（每日範圍與平均）", { unit: "次/分",
+        note: "面為每日最低到最高，線為每日平均；安靜心率由 Apple 每日估算",
+        series: [
+          { label: "心率", color: "var(--s1)", points: hr.points, band: hr.band },
+          { label: "安靜心率", color: "var(--s3)", points: m("安靜心率") }] }),
+      chart("血氧（每日範圍與平均）", { unit: "%",
+        note: "面為每日最低到最高，線為每日平均",
+        series: [{ label: "血氧", color: "var(--s2)", points: spo2.points, band: spo2.band }] }),
+    ]);
+    const activity = block("活動", [
+      chart("日均步數（每日單一來源最大值）", { unit: "步",
+        note: range === "3m" ? "逐日" : "月平均",
+        series: [{ label: "日均步數", color: "var(--s1)",
+          points: range === "3m" ? act("步數") : monthlyAvg(act("步數")) }] }),
+      chart("距離", { unit: "km", series: [
+        { label: "步行跑步", color: "var(--s1)", points: act("步行跑步距離") },
+        { label: "騎車", color: "var(--s4)", points: act("騎車距離") }] }),
+      chart("爬樓層數", { unit: "層", series: [
+        { label: "爬樓層數", color: "var(--s3)", points: act("爬樓層數") }] }),
+      chart("能量消耗", { unit: "kcal", series: [
+        { label: "活動能量", color: "var(--s2)", points: act("活動能量") },
+        { label: "基礎能量", color: "var(--s1)", points: act("基礎能量") }] }),
+      workoutList,
+    ]);
+    // 每晚 AHI：既有「趨勢頁的睡眠呼吸對照」requirement 的承載處——
+    // 存在理由是與體重、步數的同期對照（睡眠呼吸分頁另有完整版）
+    const other = block("其他", [
+      height.length ? html`<p class="note">身高：最近量測
+        ${height[height.length - 1][1]} cm（${height[height.length - 1][0]}）</p>` : null,
+      chart("每晚 AHI（睡眠呼吸）", { unit: "次/小時",
+        note: "日期為入睡當晚；與本頁其他圖共用同一時間區間，可直接同期對照",
+        series: [{ label: "AHI", color: "var(--s3)", points: cpapSeries("ahi") }] }),
+    ]);
+    const blocks = [body, circ, activity, other].filter(Boolean);
+    if (!blocks.length) return html`<section><p class="note">尚無量測資料。</p></section>`;
+    return html`<section>
+      <${RangeBar} range=${range} setRange=${setRange}>
+        <span class="note">本頁各圖共用同一時間區間，可直接同期對照</span>
+      </${RangeBar}>
+      ${blocks}
     </section>`;
   }
 
   /* ---------- 睡眠呼吸分頁 ---------- */
   // 只顯示不解讀：不對 AHI 等指標下任何判定性描述（假設 #66）
   function Sleep() {
-    const { today, latest, earliest } = useMemo(trendBounds, []);
-    const [range, setRange] = useState(() => defaultRange(today, latest));
+    const oxiAll = CPAP.oximetry || [];
+    // 本頁時間域集合：CPAP 各序列＋Apple 睡眠、呼吸速率、血氧（spec：
+    // 該分頁繪製的全部序列）
+    const rangeState = useRange([
+      cpapSeries("ahi"), cpapSeries("usage_min"), cpapSeries("leak_95"),
+      cpapSeries("pressure_95"),
+      oxiAll.map((r) => [r.date, r.spo2_min]),
+      (CPAP.event_daily || []).map((r) => [r.date, r.n]),
+      SLEEP_HOURS, bandChart("呼吸速率").points, bandChart("血氧").points]);
+    const { range, setRange, dom, showAll, rangeLabel } = rangeState;
     const [breakdown, setBreakdown] = useState(false);
     // 逐筆事件只在展開那一晚才建 DOM（沿用用藥頁 MedGroup 的作法）。摺疊起來
     // 也全部渲染的話，上限情境會是 8,000 個 <tr> 掛在頁面上。
     const [openNight, setOpenNight] = useState(null);
     const [openYear, setOpenYear] = useState(null);
-    const dom = rangeDomain(range, today, earliest);
-    const showAll = range === "all" ? null : () => setRange("all");
-    const rangeLabel = (RANGES.find(([k]) => k === range) || [])[1];
 
     const ahiSeries = [{ label: "AHI", color: "var(--s3)", points: cpapSeries("ahi") }];
     if (breakdown) {
@@ -721,17 +933,79 @@
     }
     const devices = [...new Set(CPAP_DAILY.map((r) => r.device))].filter(Boolean);
     const nights = CPAP_DAILY.length;
-    const usageSeries = [{ label: "使用時數", color: "var(--s1)",
-      points: CPAP_DAILY.filter((r) => r.usage_min != null)
-        .map((r) => [r.date, Math.round((r.usage_min / 60) * 10) / 10]) }];
+    const usagePoints = CPAP_DAILY.filter((r) => r.usage_min != null)
+      .map((r) => [r.date, Math.round((r.usage_min / 60) * 10) / 10]);
+    const usageSeries = [{ label: "使用時數", color: "var(--s1)", points: usagePoints }];
+
+    /* ---- Apple 睡眠與呼吸（各區塊無資料不渲染） ---- */
+    const [sleepBreakdown, setSleepBreakdown] = useState(false);
+    const sleepIdents = [...new Set(SLEEP_DAILY.flatMap(([, o]) => Object.keys(o)))].sort();
+    const SLEEP_COLORS = ["var(--s2)", "var(--s3)", "var(--s4)", "var(--accent)", "var(--warn)"];
+    const sleepSeries = SLEEP_HOURS.length
+      ? [{ label: "總睡眠", color: "var(--s1)", points: SLEEP_HOURS }] : [];
+    if (sleepBreakdown || !SLEEP_HOURS.length) {
+      sleepIdents.forEach((k, i) => sleepSeries.push({
+        label: sleepIdentZh(k), color: SLEEP_COLORS[i % SLEEP_COLORS.length],
+        points: SLEEP_DAILY.filter(([, o]) => o[k] != null)
+          .map(([d, o]) => [d, Math.round((o[k] / 60) * 10) / 10]) }));
+    }
+    const respiratory = bandChart("呼吸速率");
+    const spo2low = bandChart("血氧").band.map((b) => [b[0], b[1]]);
+    // 使用時數 ÷ 睡眠時數的合計比值：當前區間 ∩ 兩來源皆有資料的日期
+    // 範圍，各自加總再相除。不逐晚相除：兩來源「一晚」定義不同（CPAP
+    // 正午分界紀錄夜 vs Apple 入睡起始日曆日），凌晨入睡的夜兩邊差一天，
+    // 逐晚除是系統性錯位；合計層面天級錯位互相抵消。
+    const coverage = (() => {
+      if (!usagePoints.length || !SLEEP_HOURS.length) return null;
+      const lo = Math.max(tsOf(usagePoints[0][0]), tsOf(SLEEP_HOURS[0][0]), dom.tMin);
+      const hi = Math.min(tsOf(usagePoints[usagePoints.length - 1][0]),
+        tsOf(SLEEP_HOURS[SLEEP_HOURS.length - 1][0]), dom.tMax);
+      if (lo > hi) return null;
+      const win = (pts) => pts.filter(([d]) => {
+        const t = tsOf(d); return t >= lo && t <= hi;
+      });
+      const use = win(usagePoints), slp = win(SLEEP_HOURS);
+      const sum = (pts) => pts.reduce((a, p) => a + p[1], 0);
+      const sSlp = sum(slp);
+      if (!use.length || !slp.length || !sSlp) return null;
+      return { p: Math.round((sum(use) / sSlp) * 100), nUse: use.length, nSlp: slp.length };
+    })();
 
     return html`<section>
       <div class="filters">
         ${RANGES.map(([k, label]) => html`<button class="catbtn ${range === k ? "on" : ""}"
           onClick=${() => setRange(k)}>${label}</button>`)}
-        <span class="note">有紀錄的夜晚 ${nights} 晚${devices.length ? `｜機型 ${devices.join("、")}` : ""}</span>
+        <span class="note">${HAS_CPAP
+          ? `有紀錄的夜晚 ${nights} 晚${devices.length ? `｜機型 ${devices.join("、")}` : ""}`
+          : `有睡眠紀錄 ${SLEEP_DAILY.length} 天`}</span>
       </div>
-      <h2>每晚 AHI</h2>
+      ${HAS_SLEEP && html`<h2>睡眠時數</h2>
+        ${SLEEP_HOURS.length > 0 && sleepIdents.length > 0 && html`<div class="filters">
+          <button class="catbtn ${sleepBreakdown ? "on" : ""}"
+            onClick=${() => setSleepBreakdown(!sleepBreakdown)}>顯示分項（各睡眠階段）</button>
+        </div>`}
+        <${LineChart} unit="小時" series=${sleepSeries} domain=${dom}
+          onShowAll=${showAll} rangeLabel=${rangeLabel}
+          note="來自 Apple 健康；日期為入睡起始的日曆日，依賴裝置配戴、可能不完整" />`}
+      ${HAS_CPAP && SLEEP_HOURS.length > 0 && html`<h2>睡眠時數與 CPAP 使用對照</h2>
+        <${LineChart} unit="小時" domain=${dom} onShowAll=${showAll} rangeLabel=${rangeLabel}
+          note="兩來源的「一晚」定義不同（機器以正午分界、Apple 以入睡起始的日曆日），逐晚可能相差一天，適合看趨勢對照"
+          series=${[
+            { label: "CPAP 使用", color: "var(--s1)", points: usagePoints },
+            { label: "Apple 睡眠", color: "var(--s3)", points: SLEEP_HOURS }]} />
+        ${coverage && html`<p class="note">此區間兩來源重疊期間：使用時數佔睡眠時數比例約
+          ${coverage.p}%（CPAP ${coverage.nUse} 晚、Apple 睡眠 ${coverage.nSlp} 天）。
+          比例可能超過 100%：Apple 睡眠依賴裝置配戴，記錄可能不完整。</p>`}`}
+      ${respiratory.points.length > 0 && html`<h2>呼吸速率（睡眠期間）</h2>
+        <${LineChart} unit="次/分" domain=${dom} onShowAll=${showAll} rangeLabel=${rangeLabel}
+          note="來自 Apple 健康；面為每日最低到最高，線為每日平均"
+          series=${[{ label: "呼吸速率", color: "var(--s4)",
+            points: respiratory.points, band: respiratory.band }]} />`}
+      ${spo2low.length > 0 && html`<h2>血氧低點（Apple）</h2>
+        <${LineChart} unit="%" domain=${dom} onShowAll=${showAll} rangeLabel=${rangeLabel}
+          note="來自 Apple 健康的每日最低血氧；與下方 CPAP 睡眠期血氧為不同來源與量測情境，分開呈現"
+          series=${[{ label: "每日最低", color: "var(--s2)", points: spo2low }]} />`}
+      ${HAS_CPAP && html`<h2>每晚 AHI</h2>
       <div class="filters">
         <button class="catbtn ${breakdown ? "on" : ""}"
           onClick=${() => setBreakdown(!breakdown)}>顯示分項（阻塞／中樞／低通氣）</button>
@@ -808,7 +1082,7 @@
                 </div>`}
               </div>`)}
           </div>`
-        : ""}
+        : ""}`}
     </section>`;
   }
 
@@ -850,7 +1124,7 @@
         ${!medGroups.length && html`<p class="note">無符合</p>`}</div>
       <h2>檢驗（${labGroups.length} 項）</h2>
       <div class="card">${labGroups.slice(0, 20).map((l) => html`
-        <div class="rowlink srow" onClick=${() => go("trends", { lab: l.name })}>
+        <div class="rowlink srow" onClick=${() => go("labs", { lab: l.name })}>
           <span>${l.name}</span>
           <span class="dt">最近 ${l.test_date}＝${l.value_text}</span><span class="go">›</span></div>`)}
         ${!labGroups.length && html`<p class="note">無符合</p>`}</div>
@@ -875,8 +1149,11 @@
     }
   }
 
-  const TABS = [["overview", "總覽"], ["timeline", "就醫時間軸"], ["meds", "用藥"],
-    ["trends", "趨勢"], ...(HAS_CPAP ? [["sleep", "睡眠呼吸"]] : [])];
+  // 六分頁（change display-revamp-bands-cleanup D5）；睡眠呼吸有 CPAP
+  // 或 Apple 睡眠彙總任一即顯示
+  const TABS = [["overview", "總覽"], ["timeline", "就醫"], ["meds", "用藥"],
+    ["labs", "檢驗"], ["measures", "測量"],
+    ...(HAS_CPAP || HAS_SLEEP ? [["sleep", "睡眠呼吸"]] : [])];
   function App() {
     const [tab, setTab] = useState("overview");
     const [focus, setFocus] = useState(null);
@@ -887,7 +1164,8 @@
       : tab === "timeline" ? html`<${Timeline} key=${"t" + JSON.stringify(focus)} focus=${focus} />`
       : tab === "meds" ? html`<${Meds} key=${"m" + JSON.stringify(focus)} focus=${focus} go=${go} />`
       : tab === "sleep" ? html`<${Sleep} />`
-      : html`<${Trends} key=${"r" + JSON.stringify(focus)} focus=${focus} />`;
+      : tab === "measures" ? html`<${Measures} />`
+      : html`<${Labs} key=${"r" + JSON.stringify(focus)} focus=${focus} />`;
     return html`<div>
       <header>
         <h1>${DATA.meta.profile ? DATA.meta.profile + " 的個人健康資料工作台" : "個人健康資料工作台"}</h1>

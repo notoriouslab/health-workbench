@@ -98,6 +98,15 @@ async function shapePayload({ nullLabDate = false, staleAll = false,
     labDates.map((dt, i) => [pid, doc.nhi, "r4", i + 1, `fp-l-${i}`, "{}", dt,
       "示範綜合醫院", "生化檢驗", "CREATININE", "Creatinine", "1.0 mg/dL", 1.0 + i * 0.05,
       "[0.7-1.3]", ""]));
+  // 第二個檢驗項目（日期落在第一項的範圍內）：供「切換項目不位移 x 軸」
+  // 測試用（單一項目切不了）
+  await d.batchInsert("lab_results",
+    ["profile_id", "doc_id", "section", "source_index", "record_fp", "canonical",
+      "test_date", "facility_name", "order_name", "test_name_raw",
+      "test_name_normalized", "value_text", "value_numeric", "ref_range", "quality_flags"],
+    labDates0.slice(0, 2).map((dt, i) => [pid, doc.nhi, "r4", 90 + i, `fp-g-${i}`, "{}",
+      dt, "示範綜合醫院", "生化檢驗", "GLUCOSE", "Glucose", "95 mg/dL", 95 + i,
+      "[70-100]", ""]));
   // 成健三點（體重圖第二條序列，顯式 marker）
   await d.batchInsert("body_measurements",
     ["profile_id", "doc_id", "section", "source_index", "record_fp", "canonical",
@@ -144,10 +153,20 @@ const xTicks = (s) => inSvg(s, "text").filter((t) => num(t, "y") === X_TICK_Y)
   .map((t) => t.textContent);
 const legend = (s) => inSvg(s, "text").filter((t) => num(t, "x") >= W - PR);
 
+/* 分頁改版（display-revamp-bands-cleanup）後：體重／血壓／步數在測量
+   分頁，檢驗在檢驗分頁，各自有整頁區間與時間域 */
 async function trends(payload) {
   const { root, flush } = render(payload);
   await flush();
-  btn(root, "趨勢").dispatch("click");
+  btn(root, "測量").dispatch("click");
+  await flush();
+  return { root, flush };
+}
+
+async function labsPage(payload) {
+  const { root, flush } = render(payload);
+  await flush();
+  btn(root, "檢驗").dispatch("click");
   await flush();
   return { root, flush };
 }
@@ -163,21 +182,29 @@ test("停止記錄的序列末點不落在右緣，且時間間隔成正比", as
     `血壓末點 cx=${maxCx.toFixed(0)} 應明顯小於右緣 ${PL + PW}`);
 });
 
-test("四張圖共用時間域：x 軸刻度一致，且不隨檢驗下拉變動", async () => {
+test("測量頁各圖共用時間域：x 軸刻度一致", async () => {
   const { root, flush } = await trends(await shapePayload());
   btn(root, "全部").dispatch("click");
   await flush();
   const tickSets = svgs(root).map(xTicks).filter((t) => t.length);
   assert.ok(tickSets.length >= 2, "至少兩張圖要有刻度");
   for (const t of tickSets) assert.deepEqual(t, tickSets[0], "各圖刻度應一致");
-  // 切換檢驗項目後其他圖刻度不變（序列集合與下拉選擇無關）
+});
+
+test("檢驗頁：切換檢驗項目不位移 x 軸（集合含全部項目）", async () => {
+  const { root, flush } = await labsPage(await shapePayload());
+  btn(root, "全部").dispatch("click");
+  await flush();
+  const before = svgs(root).map(xTicks).filter((t) => t.length);
+  assert.ok(before.length >= 1, "檢驗頁要有刻度");
   const sel = findAll(root, (e) => e.localName === "select")[0];
-  if (sel) {
-    sel.dispatch("change");
-    await flush();
-    const after = svgs(root).map(xTicks).filter((t) => t.length);
-    assert.deepEqual(after[after.length - 1], tickSets[tickSets.length - 1]);
-  }
+  assert.ok(sel, "檢驗頁應保留項目下拉（既有互動不退化）");
+  sel.value = "Glucose";
+  sel.dispatch("change");
+  await flush();
+  const after = svgs(root).map(xTicks).filter((t) => t.length);
+  assert.ok(after.length >= 1, "切換後圖要還在");
+  assert.deepEqual(after[0], before[0], "切換檢驗項目不得位移 x 軸刻度");
 });
 
 test("刻度依時間挑選：跨度大用年、近三月降到不超過上限且格式為 MM-DD", async () => {
@@ -259,7 +286,7 @@ test("步數粒度隨區間：近三月逐日、全部月平均", async () => {
 });
 
 test("null 日期被剔除且不污染時間域", async () => {
-  const { root, flush } = await trends(await shapePayload({ nullLabDate: true }));
+  const { root, flush } = await labsPage(await shapePayload({ nullLabDate: true }));
   btn(root, "全部").dispatch("click");
   await flush();
   const ticks = svgs(root).map(xTicks).find((t) => t.length);
@@ -387,7 +414,7 @@ test("總覽體重卡維持標記與逐點提示（該卡無區間可切，不�
 });
 
 test("極大跨度仍有 x 軸刻度（不得靜默變成零刻度）", async () => {
-  const { root, flush } = await trends(await shapePayload({ ancientDate: true }));
+  const { root, flush } = await labsPage(await shapePayload({ ancientDate: true }));
   btn(root, "全部").dispatch("click");
   await flush();
   const ticks = svgs(root).map(xTicks).find((t) => t.length !== undefined && t.length >= 0);
@@ -401,4 +428,39 @@ test("總覽血壓卡顯示量測日期（避免陳舊數值看似當前）", as
   await flush();
   assert.match(root.textContent, /mmHg｜\d{4}-\d{2}-\d{2}/,
     "血壓卡應在單位旁顯示最近量測日期");
+});
+
+/* ---- 身體數值參考線（display-revamp-bands-cleanup T5）：標準值來自
+   knowledge 條目，條目移除時參考線消失（不留寫死預設） ---- */
+const BODY_REFS = JSON.parse(readFileSync(
+  new URL("../../src/knowledge/body_refs.json", import.meta.url), "utf-8"));
+
+test("血壓參考線來自 knowledge 條目：兩條虛線＋來源與引用日期", async () => {
+  const p = await shapePayload();
+  p.body_refs = BODY_REFS;
+  const { root, flush } = await trends(p);
+  btn(root, "全部").dispatch("click");
+  await flush();
+  const bp = svgs(root).find((s) => inSvg(s, "circle").length === 64);
+  assert.ok(bp, "找不到血壓圖");
+  const reflines = inSvg(bp, "line")
+    .filter((l) => String(l.getAttribute("class") || "") === "refline");
+  assert.equal(reflines.length, 2, "血壓圖應有收縮 130 與舒張 80 兩條參考線");
+  const text = root.textContent;
+  assert.ok(text.includes("參考 130") && text.includes("參考 80"), "缺參考線標籤");
+  assert.match(text, /引用日期 \d{4}-\d{2}-\d{2}/, "缺來源引用日期");
+  assert.ok(!/超標|正常/.test(text.replace(/屬於正常|數值正常/g, "")),
+    "參考線呈現不得帶判定字樣");
+});
+
+test("knowledge 條目移除時參考線消失（不留寫死預設）", async () => {
+  const p = await shapePayload();
+  p.body_refs = [];
+  const { root, flush } = await trends(p);
+  btn(root, "全部").dispatch("click");
+  await flush();
+  const reflines = findAll(root, (e) => e.localName === "line"
+    && String(e.getAttribute("class") || "") === "refline");
+  assert.equal(reflines.length, 0, "條目移除後不得出現任何參考線");
+  assert.ok(!root.textContent.includes("參考 130"), "標籤也不得殘留");
 });

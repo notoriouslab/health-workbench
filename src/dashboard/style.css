@@ -94,6 +94,7 @@ th { color: var(--ink2); font-weight: 500; font-size: .85em; }
 .grid { stroke: var(--line); stroke-width: 1; }
 .ax { fill: var(--ink2); font-size: 11px; }
 .refband { fill: var(--band); }
+.refline { stroke: var(--ink2); stroke-dasharray: 4 3; opacity: .55; }
 .report { white-space: pre-wrap; font: .85em/1.5 ui-monospace, monospace;
   background: var(--band); padding: 10px; border-radius: 10px; overflow-x: auto; }
 a { color: var(--accent); }
