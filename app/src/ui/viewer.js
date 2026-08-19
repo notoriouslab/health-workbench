@@ -27,6 +27,45 @@ export function exportFileName(memberName, dateStr, ext = "html") {
   return `dashboard_${safe}_${dateStr.replaceAll("-", "")}-private.${ext}`;
 }
 
+// 藥品快取解析的決策核心（依賴注入純化，tests/ui/drug_cache_resolution
+// 直測六種形狀；權限層測不到，實機 dogfood 另驗——feedback_injected_fs）。
+// 回傳 local 路徑或 null（雙邊都拿不到）。deps.cacheDate(path) 回建置日期
+// 字串（ISO，讀不到回 ""）。
+export async function resolveDrugCachePath(deps, dir, sep) {
+  const local = `${dir}${sep}drug_items.sqlite`;
+  const hasLocal = await deps.exists(local).catch(() => false);
+  let bundled = null;
+  try {
+    bundled = await deps.resolveResource("resources/drug_items.sqlite");
+  } catch {
+    bundled = null;
+  }
+  if (hasLocal) {
+    if (!bundled) return local;
+    const localDate = await deps.cacheDate(local);
+    const bundleDate = await deps.cacheDate(bundled);
+    if (localDate >= bundleDate) return local;
+    try {
+      await deps.copyFile(bundled, local);
+    } catch (err) {
+      // 覆蓋失敗＝退回舊資料（可用但陳舊），比整包 null 好
+      console.error("[hwb] 藥品快取更新失敗，沿用既有快取：", err);
+    }
+    return local;
+  }
+  if (!bundled) {
+    console.error("[hwb] 用藥品項檔快取取不到，西藥品項將無法辨識");
+    return null;
+  }
+  try {
+    await deps.copyFile(bundled, local);
+    return local;
+  } catch (err) {
+    console.error("[hwb] 用藥品項檔快取取不到，西藥品項將無法辨識：", err);
+    return null;
+  }
+}
+
 export function createViewer({ getDriver, getDbPath, getProfileId,
   getExportStartDir, labEntries, bodyRefs = [], onNotify }) {
   let assets = null;
@@ -44,28 +83,51 @@ export function createViewer({ getDriver, getDbPath, getProfileId,
   frame.addEventListener("load", wireExternalLinks);
 
   // 解析順序：db 同目錄（使用者可自行更新快取，Python 慣例）→ 沒有就從 bundle
-  // 資源複製一份過去，之後永遠走第一條。
+  // 資源複製一份過去。
   //
-  // 原本第二條是「exists(bundled) 為真才回 bundled」，而那個探測在 dev 模式會
-  // 失敗並被 catch 吞成 null（2026-08-13 實機：檔案確實在
-  // target/debug/resources/ 卻拿不到）。後果是靜默降級：payload 少了 drug_zh，
-  // 用藥頁的西藥品項全部落到「診療項目與其他」，畫面只在說明行寫「未建快取」，
-  // 沒人會把那句話跟分類錯誤連起來。改為直接 copyFile（權限已允許），失敗時
-  // 把原因寫進 console 而不是無聲吞掉。
+  // 兩個歷史陷阱都釘在這裡：
+  // 1. 原本第二條是「exists(bundled) 為真才回 bundled」，dev 模式探測失敗被
+  //    catch 吞成 null → 靜默降級（2026-08-13 實機），故改直接 copyFile、
+  //    失敗寫 console。
+  // 2. 原本第一條「local 存在就用」讓發版後的新 bundle 永遠讀不到——上面的
+  //    copyFile 首次就會把 local 建出來，之後 exists 恆真，所有既有使用者
+  //    停在舊資料且無任何提示（2026-08-20 稽核以實機檔與舊 bundle 逐位元組
+  //    對帳實證）。故 local 與 bundle 都在時比對 cache_meta 的建置日期，
+  //    bundle 較新才覆蓋；使用者以 hwb knowledge update 自行更新（日期較新
+  //    或同日）不被回頭蓋掉。日期讀不到（檔壞、無表）視為最舊。
+  async function probeCacheDate(p) {
+    const driver = getDriver();
+    const esc = String(p).replaceAll("'", "''");
+    try {
+      try {
+        await driver.execute(`ATTACH DATABASE 'file:${esc}?mode=ro' AS cacheprobe`);
+      } catch {
+        await driver.execute(`ATTACH DATABASE '${esc}' AS cacheprobe`);
+      }
+    } catch {
+      return "";
+    }
+    try {
+      const rows = await driver.select(
+        "SELECT value FROM cacheprobe.cache_meta WHERE key='updated_at'");
+      return rows.length ? String(rows[0].value || "") : "";
+    } catch {
+      return "";
+    } finally {
+      await driver.execute("DETACH DATABASE cacheprobe").catch(() => {});
+    }
+  }
+
   async function drugCachePath() {
     const t = window.__TAURI__;
     const dir = getDbPath().replace(/[/\\][^/\\]+$/, "");
     const sep = dir.includes("\\") ? "\\" : "/";
-    const local = `${dir}${sep}drug_items.sqlite`;
-    if (await t.fs.exists(local).catch(() => false)) return local;
-    try {
-      const bundled = await t.path.resolveResource("resources/drug_items.sqlite");
-      await t.fs.copyFile(bundled, local);
-      return local;
-    } catch (err) {
-      console.error("[hwb] 用藥品項檔快取取不到，西藥品項將無法辨識：", err);
-      return null;
-    }
+    return resolveDrugCachePath({
+      exists: (p) => t.fs.exists(p),
+      copyFile: (from, to) => t.fs.copyFile(from, to),
+      resolveResource: (p) => t.path.resolveResource(p),
+      cacheDate: probeCacheDate,
+    }, dir, sep);
   }
 
   function showEmpty() {

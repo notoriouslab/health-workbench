@@ -204,3 +204,17 @@ test("樣式表：清單平時隱藏，列印時只留清單", () => {
     "列印時未隱藏分頁內非清單內容");
   assert.match(print, /\.print-sheet\s*\{\s*display:\s*block/, "列印時未顯示清單");
 });
+
+test("列印清單表格有 thead（跨頁重印表頭）＋列印樣式規則", async () => {
+  const base = await basePayload();
+  const { root } = await openMeds(payloadWithMeds(base, [WESTERN, TCM]));
+  const sheet = sheetOf(root);
+  const theads = findAll(sheet, (el) => el.localName === "thead");
+  assert.equal(theads.length, 2, "藥品與中醫用藥兩節的表格都該有 thead");
+  const css = readFileSync(new URL("style.css", ASSETS), "utf-8");
+  const print = css.slice(css.indexOf("@media print"));
+  assert.match(print, /\.print-sheet thead \{ display: table-header-group/,
+    "缺 thead 跨頁重印規則（第二頁起會變三欄無標題裸表）");
+  assert.match(print, /\.print-sheet h3 \{ page-break-after: avoid/,
+    "缺節標題防孤兒規則");
+});

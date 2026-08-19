@@ -583,14 +583,17 @@
 
   function MedIndication({ m }) {
     const [full, setFull] = useState(false);
-    const text = String(m.indication);
+    // 適應症、狀態註記、用法用量三段各自獨立條件：命中證有 6/44775 列
+    // 「已註銷但無適應症」，註記不得被適應症有無綁架（spec：非有效
+    // SHALL 註記，無前提）。
+    const text = m.indication ? String(m.indication) : "";
     const long = text.length > INDICATION_CLAMP;
     const shown = long && !full ? `${text.slice(0, INDICATION_CLAMP)}…` : text;
     const ver = DATA.meta.drug_cache && DATA.meta.drug_cache.license_updated_at;
     return html`<div>
-      <p class="note">官方登記適應症原文${ver ? `（${ver}）` : ""}</p>
+      ${text && html`<p class="note">官方登記適應症原文${ver ? `（${ver}）` : ""}</p>
       <p>${shown}${long && html` <button class="catbtn"
-        onClick=${() => setFull(!full)}>${full ? "收合" : "顯示全部"}</button>`}</p>
+        onClick=${() => setFull(!full)}>${full ? "收合" : "顯示全部"}</button>`}</p>`}
       ${m.license_status && html`<p class="note">${
         `此藥品許可證${m.license_status}（歷史處方仍可對照品項資訊）`}</p>`}
       ${m.usage_text && html`<p class="note">用法用量（原文）：${m.usage_text}</p>`}
@@ -612,7 +615,7 @@
           顯示原始醫囑名稱（診療項目與中藥不在西藥品項檔範圍）</p>`}
         ${m.ingredient && html`<p class="note">成分：${m.ingredient}
           ${m.leaflet_url && html`｜<a href=${m.leaflet_url} target="_blank" rel="noopener">仿單↗</a>`}</p>`}
-        ${m.indication && html`<${MedIndication} m=${m} />`}
+        ${(m.indication || m.license_status || m.usage_text) && html`<${MedIndication} m=${m} />`}
         <${DispenseTimeline} items=${g.items} />
         <table><tr><th>日期</th><th>院所</th><th>總量</th><th>天數</th><th></th></tr>
           ${g.items.map((x) => html`<tr class="rowlink"
@@ -649,11 +652,12 @@
       <p class="note">藥品資訊來自健保用藥品項檔（版本 ${ver}）</p>
       ${secs.map(([label, gs]) => html`<div>
         <h3>${label}（${gs.length}）</h3>
-        <table><tr><th>名稱</th><th>成分</th><th>最近處方日期</th></tr>
-          ${gs.map((g) => html`<tr>
+        <table>
+          <thead><tr><th>名稱</th><th>成分</th><th>最近處方日期</th></tr></thead>
+          <tbody>${gs.map((g) => html`<tr>
             <td>${g.m.drug_zh || g.m.order_name}</td>
             <td>${g.m.ingredient || ""}</td>
-            <td class="dt">${g.items[0].date}</td></tr>`)}
+            <td class="dt">${g.items[0].date}</td></tr>`)}</tbody>
         </table></div>`)}
       <p class="note">本清單僅為就醫溝通輔助，不含醫療判斷</p>
     </div>`;

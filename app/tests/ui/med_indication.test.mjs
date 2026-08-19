@@ -207,3 +207,13 @@ test("許可證資料集版本日期缺：標題不帶括號", async () => {
   assert.ok(text.includes("官方登記適應症原文"), "缺標題");
   assert.ok(!text.includes("官方登記適應症原文（"), "無日期時不該有括號");
 });
+
+
+test("已註銷但無適應症（真實 6/44775 樣態）：註記仍顯示、無適應症標題", async () => {
+  const base = await basePayload();
+  const m = med(7, { license_status: "已註銷" });   // 無 indication 鍵
+  const { root } = await openMedCard(payloadWithMeds(base, [m]), "測試藥7");
+  const text = root.textContent;
+  assert.ok(text.includes("此藥品許可證已註銷"), "無適應症時註記不得消失");
+  assert.ok(!text.includes("官方登記適應症原文"), "無適應症不該有原文標題");
+});

@@ -141,6 +141,8 @@ header .disclaimer b { color: var(--warn); }
   .print-sheet h2 { margin-top: 0; }
   .print-sheet .note { color: #000; }
   .print-sheet table { page-break-inside: auto; }
+  .print-sheet thead { display: table-header-group; }  /* 跨頁每頁重印表頭 */
+  .print-sheet h3 { page-break-after: avoid; }         /* 節標題不孤兒在頁尾 */
   .print-sheet tr { page-break-inside: avoid; }
   .print-sheet th, .print-sheet td { border-bottom: 0.5px solid #999; }
 }

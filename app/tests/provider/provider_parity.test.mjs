@@ -180,3 +180,32 @@ test("資產防漂移：viewer/assets 與 src/dashboard 逐位元組相同", () 
       readFileSync(`${REPO}/${b}`, "utf-8"), `${a} 與 ${b} 漂移`);
   }
 });
+
+// GAP-5（Jenny 稽核）：「舊快取檔容錯」的端到端測——8 欄舊 schema 快取實跑
+// buildPayload（先前只各測 lookup 半段與手捏 payload 半段，組合路徑沒人守）。
+test("端到端：8 欄舊快取跑 buildPayload——不炸、無新欄鍵、meta 無新日期", async () => {
+  const tmp = mkdtempSync(path.join(tmpdir(), "hwb-oldcache-"));
+  const dbPath = path.join(tmp, "db.sqlite");
+  const d = await buildDb(dbPath);
+  const cachePath = path.join(tmp, "old_drug_items.sqlite");
+  const c = new NodeDriver(cachePath);
+  await c.execute(`CREATE TABLE drug_items(
+    code TEXT PRIMARY KEY, name_en TEXT, name_zh TEXT, ingredient TEXT,
+    dosage_form TEXT, atc TEXT, leaflet_url TEXT, valid_until TEXT)`);
+  await c.execute("CREATE TABLE cache_meta(key TEXT PRIMARY KEY, value TEXT)");
+  await c.execute("INSERT INTO drug_items VALUES('XX00000001','OLD','舊藥甲',"
+    + "'oldium','錠','N02BE01','https://example.invalid/old','9991231')");
+  await c.execute("INSERT INTO cache_meta VALUES('updated_at','2026-08-08')");
+  await c.close();
+  const js = await buildPayload(d, { profileId: d.pid, bodyRefs: BODY_REFS,
+    knowledgeEntries: LAB_ENTRIES, drugCachePath: cachePath, today: "2026-08-09" });
+  await d.close();
+  const hit = js.medications.find((m) => m.order_code === "XX00000001");
+  assert.equal(hit.drug_zh, "舊藥甲", "既有欄照常提供");
+  for (const k of ["indication", "usage_text", "license_status"]) {
+    assert.equal(k in hit, false, `舊快取不該有 ${k} 鍵`);
+  }
+  assert.equal("license_updated_at" in js.meta.drug_cache, false,
+    "舊快取 meta 不該有 license_updated_at");
+  assert.deepEqual(validateShape(js), []);
+});
