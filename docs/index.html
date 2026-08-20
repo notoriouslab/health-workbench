@@ -126,6 +126,10 @@
        title="到 GitHub 關注這個專案的更新（需登入）">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2c1.981 0 3.671.992 4.933 2.078 1.27 1.091 2.187 2.345 2.637 3.023a1.62 1.62 0 0 1 0 1.798c-.45.678-1.367 1.932-2.637 3.023C11.67 13.008 9.981 14 8 14c-1.981 0-3.671-.992-4.933-2.078C1.797 10.831.88 9.577.43 8.899a1.62 1.62 0 0 1 0-1.798c.45-.678 1.367-1.932 2.637-3.023C4.33 2.992 6.019 2 8 2ZM1.679 7.932a.12.12 0 0 0 0 .136c.411.622 1.241 1.75 2.366 2.717C5.176 11.758 6.527 12.5 8 12.5c1.473 0 2.825-.742 3.955-1.715 1.124-.967 1.954-2.096 2.366-2.717a.12.12 0 0 0 0-.136c-.412-.621-1.242-1.75-2.366-2.717C10.824 4.242 9.473 3.5 8 3.5c-1.473 0-2.825.742-3.955 1.715-1.124.967-1.954 2.096-2.366 2.717ZM8 10a2 2 0 1 1-.001-3.999A2 2 0 0 1 8 10Z"/></svg>
       關注<span class="gh-count" id="gh-watch"></span></a>
+    <a class="gh-btn" href="https://github.com/notoriouslab/health-workbench/releases"
+       title="歷來所有版本的安裝檔下載總和">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14ZM7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z"/></svg>
+      累計下載<span class="gh-count" id="gh-downloads"></span></a>
   </div>
 
   <div class="dl-box">
@@ -319,6 +323,21 @@ Windows 對它的標準提示）。</p>
       put("gh-stars", repo.stargazers_count);
       put("gh-forks", repo.forks_count);
       put("gh-watch", repo.subscribers_count);
+    })
+    .catch(function () { /* 計數留空即可 */ });
+
+  // 累計下載＝歷來全部 release 資產的下載數加總（per_page=100 對本專案的
+  // 版本數綽綽有餘；超過再說）。查不到就留空，按鈕仍連到 releases 頁。
+  fetch("https://api.github.com/repos/notoriouslab/health-workbench/releases?per_page=100")
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (rels) {
+      var total = 0;
+      for (var i = 0; i < rels.length; i++) {
+        var assets = rels[i].assets || [];
+        for (var j = 0; j < assets.length; j++) total += assets[j].download_count || 0;
+      }
+      var el = document.getElementById("gh-downloads");
+      if (el && total > 0) el.textContent = " " + total.toLocaleString();
     })
     .catch(function () { /* 計數留空即可 */ });
 })();
