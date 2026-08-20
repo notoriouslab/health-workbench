@@ -759,7 +759,10 @@
     const one = /^\[([^\[\]]+)\]$/.exec(str);
     if (one) {
       const s2 = one[1];
-      const p1 = REF_PAIR.exec(s2);
+      // 錨定整段內容「恰為」單一範圍（spec 條文用語）：未錨定的 REF_PAIR
+      // 會把 [0-14d]（年齡段標記）、[男 13-17 女 12-16]（性別分段）的
+      // 首個數對畫成帶——重開這條 requirement 自己要防的錯畫類
+      const p1 = /^\s*[+]?(-?\d+\.?\d*)\s*[-–~]\s*[+]?(-?\d+\.?\d*)\s*$/.exec(s2);
       if (p1) {
         const lo = parseFloat(p1[1]), hi = parseFloat(p1[2]);
         return lo < hi ? { band: [lo, hi] } : null;
