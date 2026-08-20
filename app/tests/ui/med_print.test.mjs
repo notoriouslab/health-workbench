@@ -59,8 +59,9 @@ function payloadWithMeds(base, meds) {
   return p;
 }
 
-/* epub：模擬 EPUB 骨架注入的 window.HWB_EPUB 旗標 */
-function renderViewer(payload, { epub = false } = {}) {
+/* epub：模擬 EPUB 骨架注入的 window.HWB_EPUB 旗標；
+   inApp：模擬 App 檢視頁的 iframe（window.frameElement 非 null） */
+function renderViewer(payload, { epub = false, inApp = false } = {}) {
   const doc = makeDocument();
   const dataEl = doc.createElement("script");
   dataEl.textContent = JSON.stringify(payload);
@@ -79,6 +80,7 @@ function renderViewer(payload, { epub = false } = {}) {
   sandbox.self = sandbox;
   sandbox.globalThis = sandbox;
   if (epub) sandbox.HWB_EPUB = true;
+  if (inApp) sandbox.frameElement = {};
   vm.createContext(sandbox);
   for (const f of ["vendor/preact.min.js", "vendor/hooks.umd.js",
     "vendor/htm.umd.js", "app.js"]) {
@@ -217,4 +219,19 @@ test("列印清單表格有 thead（跨頁重印表頭）＋列印樣式規則",
     "缺 thead 跨頁重印規則（第二頁起會變三欄無標題裸表）");
   assert.match(print, /\.print-sheet h3 \{ page-break-after: avoid/,
     "缺節標題防孤兒規則");
+});
+
+test("App 內（iframe）：不渲染列印按鈕、顯示匯出導流說明（2026-08-20 實機 fallback）", async () => {
+  const base = await basePayload();
+  const payload = payloadWithMeds(base, [WESTERN, TCM]);
+  const { root, printCalls } = await openMeds(payload, { inApp: true });
+  assert.ok(!buttonByText(root, "列印用藥清單"),
+    "App 內 window.print 不作用，不得擺一顆沒反應的按鈕");
+  assert.ok(root.textContent.includes("先按上方「匯出單檔 HTML」"),
+    "App 內應顯示導流說明");
+  assert.equal(printCalls.length, 0);
+  // 對照：瀏覽器頂層（無 frameElement）有按鈕、無導流說明
+  const plain = await openMeds(payload);
+  assert.ok(buttonByText(plain.root, "列印用藥清單"));
+  assert.ok(!plain.root.textContent.includes("先按上方「匯出單檔 HTML」"));
 });

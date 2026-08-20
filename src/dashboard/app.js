@@ -637,7 +637,11 @@
      範圍＝「藥品」與「中醫用藥」兩類（診療項目不是藥，不進清單）；
      每列的最近處方日期與用藥卡標頭的「最近」同一筆（items[0].date，
      payload 的 medications 已按就醫日期 DESC 排序）。
-     兩類都沒有資料時整區不渲染（不留空清單）。 */
+     兩類都沒有資料時整區不渲染（不留空清單）。
+     按鈕只在瀏覽器頂層視窗顯示：App 把檢視頁跑在 iframe 裡
+     （frameElement 非 null），wry 的 window.print 在 iframe 內不作用
+     （2026-08-20 實機 dogfood），App 內改顯示導流到匯出 HTML 的說明；
+     EPUB（HWB_EPUB 旗標）維持整組不顯示。 */
   const PRINT_CATS = [["drug", "藥品"], ["tcm", "中醫用藥"]];
 
   function MedPrintSheet({ groups }) {
@@ -687,9 +691,12 @@
         ${MED_CATS.map(([c, label]) => html`<button
           class="catbtn ${cat === c ? "on" : ""}"
           onClick=${() => { setCat(c); setOpenKey(null); }}>${label}（${byCat(c).length}）</button>`)}
-        ${!window.HWB_EPUB && html`<button class="catbtn"
+        ${!window.HWB_EPUB && !window.frameElement && html`<button class="catbtn"
           onClick=${() => window.print()}>列印用藥清單</button>`}
       </div>
+      ${!window.HWB_EPUB && !!window.frameElement && html`<p class="note">
+        要列印用藥清單：先按上方「匯出單檔 HTML」，用瀏覽器開啟後按
+        「列印用藥清單」，可直接列印或存成 PDF</p>`}
       <p class="note">藥品資訊來自健保用藥品項檔（版本
         ${DATA.meta.drug_cache ? DATA.meta.drug_cache.updated_at : "未建快取"}）；
         點列展開處方時間軸。</p>
