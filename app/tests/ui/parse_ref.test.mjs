@@ -118,6 +118,17 @@ const SYNTH = [
   ["160-35", null],                       // 合成：無括號反向範圍 → 不畫（規則 3 同護欄）
 ];
 
+// 規則 1.5（單一括號組，change prerelease-p0-fixes／design D1）。形狀取自
+// demo 產生器實際使用的健保存摺單括號寫法，數值合成。
+const ONE_BRACKET = [
+  ["[0-40]", { band: [0, 40] }],          // 範圍 → 灰帶
+  ["[0.7-1.3]", { band: [0.7, 1.3] }],    // 小數範圍 → 灰帶
+  ["[90-]", { limit: 90, kind: "lower" }],  // 數字＋尾隨連字號 → 下限線
+  ["[-40]", { limit: 40, kind: "upper" }],  // 前導連字號＋數字 → 上限線
+  ["[7.0]", null],                        // 單數無方向：帶或線都是猜 → 不畫
+  ["[無]", null],                         // 無數值 → 不畫
+];
+
 test("本機庫 45 個 DISTINCT ref_range 格式全數依 design D5 解析", () => {
   assert.equal(REAL.length, 45, "真實格式清單筆數應為實查的 45");
   assert.equal(new Set(REAL.map(([s]) => s)).size, 45, "真實格式清單不得有重複");
@@ -147,6 +158,12 @@ test("雙欄各含完整範圍者取真上下界，不得退化成零高度帶",
   }
 });
 
+test("單一括號組依內容判向（規則 1.5，design D1）", () => {
+  for (const [input, want] of ONE_BRACKET) {
+    assert.deepEqual(parseRef(input), want, `ref_range「${input}」解析結果不符`);
+  }
+});
+
 test("含括號但非恰雙欄形一律不畫（釘住規則 2，防「順手支援」錯配回歸）", () => {
   // 舊版首個配對會把年齡分段標記「0-14d」錯配成參考帶 [0,14]
   let checked = 0;
@@ -160,8 +177,10 @@ test("含括號但非恰雙欄形一律不畫（釘住規則 2，防「順手支
   }
   // 沒撈到任何複合字串＝篩選條件寫壞、本測試空轉（本機庫實查為 13 筆）
   assert.equal(checked, 13, `複合字串應檢查 13 筆，實際 ${checked}`);
-  assert.equal(parseRef("[0.7-1.3]"), null, "單層括號範圍屬未知括號形，保守不畫");
-  assert.equal(parseRef("[70-100]"), null, "單層括號範圍屬未知括號形，保守不畫");
+  // 規則 1.5 只放行「恰一個括號組且內容可判向」者；三組以上的複合形與
+  // 內容判不了向的單組仍走規則 2 保守不畫（design D1）
+  assert.equal(parseRef("[0-40][50-90][100-]"), null, "三個括號組屬未知括號形，保守不畫");
+  assert.equal(parseRef("[7.0]"), null, "單組單數無方向，不畫");
 });
 
 /* ---------- 真渲染：三形態在檢驗分頁看得到什麼 ---------- */

@@ -58,7 +58,7 @@
   };
 
   // 視窗/分頁標題帶成員名（2026-08-10 走查回饋：多成員一目瞭然）
-  if (DATA.meta.profile) document.title = DATA.meta.profile + " 的個人健康資料工作台（私人）";
+  if (DATA.meta.profile) document.title = DATA.meta.profile + "的個人健康資料工作台（私人）";
   const { h, render } = preact;
   const { useState, useMemo, useEffect } = preactHooks;
   const html = htm.bind(h);
@@ -413,7 +413,15 @@
     const stepsPrev = avgWindow(DATA.activity["步數"], 30, 30);
     const latest = DATA.encounters[0];
     const weightYear = (DATA.measures["體重"] || []).slice(-365);
-    const recentLabs = DATA.labs.filter((l) => l.value_numeric != null).slice(-4).reverse();
+    const numericLabs = DATA.labs.filter((l) => l.value_numeric != null);
+    const recentLabs = numericLabs.slice(-4).reverse();
+    /* 卡片維持 slice(-4) 緊湊，但同一次抽血（同 test_date）常超過 4 項；
+       不提示就是靜默藏資料。N＝與表內最早一列同日、卻沒進表的筆數。 */
+    const oldestShown = recentLabs.at(-1);
+    const sameDayHidden = oldestShown
+      ? numericLabs.slice(0, numericLabs.length - recentLabs.length)
+        .filter((l) => l.test_date === oldestShown.test_date).length
+      : 0;
     const lastNight = HAS_CPAP ? CPAP_DAILY.at(-1) : null;
     return html`<section>
       <div class="cards">
@@ -454,6 +462,10 @@
               onClick=${() => go("labs", { lab: l.name })}>
             <td>${l.name}</td><td class="num">${l.value_text}</td>
             <td class="dt">${l.ref_range || ""}</td><td class="dt">${l.test_date}</td></tr>`)}
+            ${sameDayHidden > 0 && html`<tr class="rowlink"
+                onClick=${() => go("labs", { lab: oldestShown.name })}>
+              <td class="dt" colspan="4">${`${String(oldestShown.test_date).slice(5)}`
+                + ` 同日還有 ${sameDayHidden} 項 ›`}</td></tr>`}
           </table>
         </${Card}>
         <${Card} wide icon="📅" color="var(--accent)" title="最近就醫">
@@ -716,6 +728,11 @@
         僅單側有數＝一側性，兩側皆缺＝null，組合後 lo ≥ hi 也 null
         （本機庫真有「兩欄各塞完整範圍且左右相同」一族，如 `[0~41][0~41]`，
         只取首數會畫出零高度帶＝錯畫）。
+     1.5. 全字串恰為單一括號組 `[內容]`（內容無括號、非空，change
+        prerelease-p0-fixes／design D1）→ 內容可明確判向者才解析：範圍
+        （`[0-40]`）→ 帶（lo<hi 護欄同規則 1）；數字＋尾隨連字號
+        （`[90-]`）→ 下限單線；前導連字號＋數字（`[-40]`）→ 上限單線；
+        其餘（`[7.0]` 單數無方向、`[無]` 無數值）→ null（帶或線都是猜）。
      2. 其餘含 `[` 的字串一律 null：年齡分段複合值（`[[0-14d]144-450 …]`）
         與一切未知括號形。**不畫比錯畫好**——舊版首個配對會把「0-14 天」
         當成參考帶 [0,14] 畫在圖上。
@@ -738,6 +755,20 @@
       if (l) return { limit: l.lo, kind: "lower" };
       if (r) return { limit: r.hi, kind: "upper" };
       return null;
+    }
+    const one = /^\[([^\[\]]+)\]$/.exec(str);
+    if (one) {
+      const s2 = one[1];
+      const p1 = REF_PAIR.exec(s2);
+      if (p1) {
+        const lo = parseFloat(p1[1]), hi = parseFloat(p1[2]);
+        return lo < hi ? { band: [lo, hi] } : null;
+      }
+      const lower = /^\s*(-?\d+(?:\.\d+)?)\s*[-–~]\s*$/.exec(s2);
+      if (lower) return { limit: parseFloat(lower[1]), kind: "lower" };
+      const upper = /^\s*[-–~]\s*(-?\d+(?:\.\d+)?)\s*$/.exec(s2);
+      if (upper) return { limit: parseFloat(upper[1]), kind: "upper" };
+      return null;   // 單數無方向／無數值＝無範圍語意，不畫
     }
     if (str.includes("[")) return null;
     const p = REF_PAIR.exec(str);
@@ -1292,7 +1323,7 @@
       : html`<${Labs} key=${"r" + JSON.stringify(focus)} focus=${focus} />`;
     return html`<div>
       <header>
-        <h1>${DATA.meta.profile ? DATA.meta.profile + " 的個人健康資料工作台" : "個人健康資料工作台"}</h1>
+        <h1>${DATA.meta.profile ? DATA.meta.profile + "的個人健康資料工作台" : "個人健康資料工作台"}</h1>
         <p class="disclaimer">本頁僅協助整理、搜尋與視覺化您自行提供的健康資料，不提供診斷、
           治療、用藥或其他醫療判斷建議；資料可能不完整或有格式誤差，如有醫療問題請諮詢
           合格醫事人員。<b>本檔含個人醫療資料，請勿外傳。</b>

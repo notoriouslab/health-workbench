@@ -374,7 +374,8 @@ test("切區間後 y 軸重算", async () => {
   const { root, flush } = await trends(await shapePayload());
   const yLabels = () => {
     // 抓體重圖：本測試只驗「上下界隨區間重算」，不牽動檢驗圖的參考值形態
-    // （fixture 的 `[0.7-1.3]` 屬未知括號形，parseRef 保守不畫，見 design D5）
+    // （fixture 的 `[0.7-1.3]` 是單一括號組範圍，parseRef 會畫成灰帶並把
+    //   0.7-1.3 納入檢驗圖 y 域，見 change prerelease-p0-fixes 的 design D1）
     const s = svgs(root).find((x) => legend(x).some((t) => t.textContent.startsWith("體重")));
     assert.ok(s, "找不到體重圖");
     return inSvg(s, "text").filter((t) => num(t, "x") < PL).map((t) => t.textContent).join("|");

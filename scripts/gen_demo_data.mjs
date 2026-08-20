@@ -153,6 +153,9 @@ const LABS = [
   ["ALT", "GPT(ALT)", 28, 9, "[0-40]", "U/L", 0],
   ["Lymphocyte", "LYMPHOCYTE", 31.5, 4.2, "[20-45]", "%", 0],
   ["eGFR (CKD-EPI)", "eGFR", 79, 6, "[90-]", "mL/min/1.73m2", -0.9],
+  // 參考值呈現的另兩種形態：雙欄形 `[低][高]`（灰帶）與一側符號形（參考上限線）
+  ["Cholesterol", "CHOL", 185, 18, "[130][200]", "mg/dL", 0],
+  ["Triglyceride", "TG", 120, 30, "<150", "mg/dL", 0],
 ];
 const labDates = Array.from({ length: 10 }, (_, q) => iso(addDays(START, q * 108 + 12)));
 const labRows = [];
@@ -235,23 +238,43 @@ for (let i = 0; i < W_DAYS; i++) {
       "行走穩定度", `${ds} 09:00:00`, `${ds} 09:00:00`,
       Math.round((0.86 + rnd() * 0.1) * 1000) / 1000, null, null, "%", "示範手機", ""]);
   }
-  // 睡眠：躺床一段＋核心／深層／快速動眼分段（起始都在同一日曆日）
+  // 睡眠：躺床一段＋核心／深層／快速動眼分段（跨過 24:00 者起始與結束的
+  // 日期都要進位——只回捲時刻卻沿用當日 ds，會讓聚合的 end-start 多算一天）。
+  // 聚合按起始日曆日歸日：每個日曆日拿到「當晚的核心段＋前一晚的跨午夜段」。
+  // 視窗尾夜不發跨午夜段（否則視窗外多出一個只有殘段的凹陷日）；視窗首日的
+  // 前一晚跨午夜段由下方 emitSleepNight 以 i=-1 補齊（否則首日只有核心段）。
+  emitSleepNight(i, day, ds, i === W_DAYS - 1 ? "no-carry" : "full");
+}
+
+// 補視窗首日的前一晚跨午夜段（只發跨午夜列，非睡眠資料不補）
+{
+  const day = addDays(A_START, A_DAYS - W_DAYS - 1);
+  emitSleepNight(-1, day, iso(day), "carry-only");
+}
+
+function emitSleepNight(i, day, ds, mode) {
   const inBedMin = 420 + Math.round(rnd() * 90);
-  appleRows.push([pid, docs.apple, "HKCategoryTypeIdentifierSleepAnalysis", "睡眠",
-    `${ds} 23:0${i % 10}:00`, `${iso(addDays(day, 1))} 07:0${i % 10}:00`,
-    null, null, "HKCategoryValueSleepAnalysisInBed", null, "示範手錶", ""]);
+  if (mode !== "carry-only") {
+    appleRows.push([pid, docs.apple, "HKCategoryTypeIdentifierSleepAnalysis", "睡眠",
+      `${ds} 23:0${((i % 10) + 10) % 10}:00`, `${iso(addDays(day, 1))} 07:0${((i % 10) + 10) % 10}:00`,
+      null, null, "HKCategoryValueSleepAnalysisInBed", null, "示範手錶", ""]);
+  }
   let t = 23 * 60 + 20;
   for (const [stage, mins] of [["AsleepCore", Math.round(inBedMin * 0.55)],
     ["AsleepDeep", Math.round(inBedMin * 0.18)],
     ["AsleepREM", Math.round(inBedMin * 0.2)]]) {
+    const sNextDay = t >= 24 * 60;
     const sH = Math.floor(t / 60) % 24, sM = t % 60;
     const eAbs = t + mins;
     const nextDay = eAbs >= 24 * 60;
     const eH = Math.floor(eAbs / 60) % 24, eM = eAbs % 60;
-    appleRows.push([pid, docs.apple, "HKCategoryTypeIdentifierSleepAnalysis", "睡眠",
-      `${ds} ${pad2(sH)}:${pad2(sM)}:00`,
-      `${nextDay ? iso(addDays(day, 1)) : ds} ${pad2(eH)}:${pad2(eM)}:00`,
-      null, null, `HKCategoryValueSleepAnalysis${stage}`, null, "示範手錶", ""]);
+    const emit = mode === "carry-only" ? sNextDay : (mode === "no-carry" ? !sNextDay : true);
+    if (emit) {
+      appleRows.push([pid, docs.apple, "HKCategoryTypeIdentifierSleepAnalysis", "睡眠",
+        `${sNextDay ? iso(addDays(day, 1)) : ds} ${pad2(sH)}:${pad2(sM)}:00`,
+        `${nextDay ? iso(addDays(day, 1)) : ds} ${pad2(eH)}:${pad2(eM)}:00`,
+        null, null, `HKCategoryValueSleepAnalysis${stage}`, null, "示範手錶", ""]);
+    }
     t = eAbs;
   }
 }
