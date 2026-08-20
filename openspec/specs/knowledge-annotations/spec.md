@@ -61,6 +61,24 @@ code:
 比對不到者 SHALL 顯示原始醫囑名稱並標 unmapped。快取更新 MUST 為
 使用者主動觸發（hwb knowledge update），MUST NOT 於匯入或建置時外連。
 
+快取建置 SHALL 同輪納入全部藥品許可證資料集（data.gov.tw/dataset/9122），
+以雙鍵 join（主鍵＝通關簽審文件編號第 5-12 碼組成之許可證代碼、
+fallback＝許可證字號之證別中文＋號碼，證別代碼映射自雙欄俱在列自動
+學習）將適應症、用法用量與註銷狀態併入品項快取，並記錄該資料之
+快取更新日期。兩鍵皆無法組出許可證代碼之品項 SHALL 維持既有欄位、
+不帶許可證資訊。
+
+快取建置 MUST 於任一資料來源缺必要欄位或下載失敗時整體失敗並保留
+既有快取檔原樣（原子替換）；MUST NOT 產出殘缺快取。
+
+查詢端（Python 與 App 端）MUST 對缺少新欄位之舊快取檔容錯：新欄位
+一律以缺值處理，MUST NOT 因欄位不存在而失敗。App 端快取資料 SHALL
+僅隨應用程式發布更新（bundle 資源），App MUST NOT 提供連網更新入口；
+發布流程 SHALL 於發版前以重產工具更新 bundle 內快取。App 端本機
+快取之建置日期早於 bundle 者 SHALL 以 bundle 覆蓋（否則發布更新
+永遠到不了既有使用者）；本機快取較新或同日（使用者自行更新）
+MUST NOT 被覆蓋。
+
 #### Scenario: 藥品連結
 - **WHEN** 檢視任一筆醫囑代碼可對應品項檔的用藥紀錄
 - **THEN** 顯示成分名與仿單平台查詢連結，並標示品項檔版本日期
@@ -69,14 +87,32 @@ code:
 - **WHEN** 無網路環境執行 hwb rebuild
 - **THEN** 建置成功，藥品資訊使用既有快取
 
+#### Scenario: 適應症離線提供
+- **WHEN** 快取更新完成後檢視醫囑代碼可對應且許可證 join 命中的用藥
+- **THEN** 該筆用藥帶有官方登記適應症原文與許可證資料更新日期，
+  全程不外連
+
+#### Scenario: 資料來源缺欄時不毀舊快取
+- **WHEN** knowledge update 下載之許可證資料集缺「適應症」欄
+- **THEN** 更新失敗並指出缺欄，既有快取檔內容原樣保留
+
+#### Scenario: 舊快取檔容錯
+- **WHEN** 以缺少適應症欄位的舊快取檔建置 payload
+- **THEN** 建置成功，用藥僅無適應症資訊，商品名與成分照常提供
+
+#### Scenario: 發版後的既有快取升級
+- **WHEN** App 升級後資料目錄仍存在較舊建置日期的本機快取
+- **THEN** 首次開啟檢視即改用新版 bundle 內容（覆蓋本機快取），
+  適應症可見；使用者自行更新過（建置日期較新）的快取不被覆蓋
 
 <!-- @trace
-source: mvp-core-dashboard
-updated: 2026-08-09
+source: drug-info-and-lab-refband
+updated: 2026-08-20
 code:
   - bin/hwb
   - docs/verification/karen_reality.md
   - README.md
+  - docs/verification/drug_info_refband.md
 -->
 
 ---
