@@ -131,10 +131,9 @@
 把這些來源整理進同一個本機資料庫：每隔一陣子把新下載的檔案拖進來，
 三年的滾動視窗就被接成不斷加深的個人縱深，重複的部分自動跳過，
 不會越匯越亂。</p>
-<p>打開程式就是完整的健康儀表板：總覽、就醫時間軸、用藥清單（附成分
-與官方仿單連結）、檢驗趨勢、睡眠呼吸，還有全文搜尋。要給家人或帶去
-診間，可以匯出成單一 HTML 檔或 EPUB 電子書，收到的人不必安裝任何
-程式就能看。</p>
+<p>打開程式就是完整的健康儀表板：總覽、就醫、用藥、檢驗、測量、睡眠呼吸
+六個分頁，還有全文搜尋。要給家人或帶去診間，可以匯出成單一 HTML 檔或
+EPUB 電子書，收到的人不必安裝任何程式就能看。</p>
 
 <h2 id="install">安裝說明</h2>
 <h3>macOS</h3>
@@ -164,31 +163,36 @@ Windows 對它的標準提示）。</p>
 </ol>
 
 <h2>畫面</h2>
-<p class="muted">以下截圖全部使用合成的示範資料，人名、院所、診斷皆為虛構。</p>
+<p class="muted">程式內分成六個分頁：總覽、就醫、用藥、檢驗、測量、睡眠呼吸。
+以下截圖全部使用合成的示範資料，人名、院所、診斷皆為虛構。</p>
 <figure>
   <img src="screenshots/overview.png" alt="總覽頁截圖：體重、血壓、日均步數與最近就診" loading="lazy">
-  <figcaption>總覽：體重、血壓、日均步數與最近就診一眼看完</figcaption>
+  <figcaption>總覽：體重、血壓、日均步數與最近就診一眼看完，附體重趨勢與最新檢驗</figcaption>
 </figure>
 <figure>
-  <img src="screenshots/timeline.png" alt="就醫時間軸截圖" loading="lazy">
-  <figcaption>就醫時間軸：跨院所、跨年度，展開單筆可看診斷、用藥與仿單連結</figcaption>
+  <img src="screenshots/meds.png" alt="用藥頁截圖：展開的用藥卡含成分與官方登記適應症原文" loading="lazy">
+  <figcaption>用藥：以藥品為核心聚合，展開可看成分、官方登記適應症原文與每次處方</figcaption>
 </figure>
 <figure>
-  <img src="screenshots/meds.png" alt="用藥頁截圖" loading="lazy">
-  <figcaption>用藥：以藥品為核心聚合，長期用藥的斷續與變化看得出來</figcaption>
+  <img src="screenshots/labs.png" alt="檢驗頁截圖：折線圖與參考值灰帶" loading="lazy">
+  <figcaption>檢驗：跨院所折線圖，灰帶為參考值區間，附官方衛教說明與逐筆表</figcaption>
 </figure>
 <figure>
-  <img src="screenshots/trends.png" alt="檢驗趨勢截圖" loading="lazy">
-  <figcaption>檢驗趨勢：跨院所折線圖，灰帶為參考值區間，附官方衛教說明</figcaption>
+  <img src="screenshots/measures.png" alt="測量頁截圖：體重與行走穩定度趨勢" loading="lazy">
+  <figcaption>測量：Apple 健康與成人健檢的量測數據，分身體、循環、活動、其他四區</figcaption>
 </figure>
+<p class="muted">另外兩個分頁是就醫（跨院所、跨年度的就醫歷史，展開單筆
+可看診斷、用藥與仿單連結）與睡眠呼吸（每晚 AHI、使用時數、睡眠時數與
+各睡眠階段）。</p>
 
 <h2>核心特色</h2>
 <ul class="features">
   <li><strong>資料留在自己家</strong>：不註冊、不上傳、不追蹤，檢視過程零網路請求</li>
   <li><strong>突破三年視窗</strong>：健康存摺只保留最近三年，逐次匯入就能無限期累積</li>
   <li><strong>全家一台電腦</strong>：多位成員各自管理，一鍵切換，匯錯人救得回來</li>
-  <li><strong>以藥品為核心的視角</strong>：長期用藥的斷續與劑量變化一目瞭然</li>
-  <li><strong>睡眠呼吸與體重同一頁</strong>：CPAP 每晚數據與體重共用時間軸對照</li>
+  <li><strong>以藥品為核心的視角</strong>：長期用藥的斷續與劑量變化一目瞭然，
+    用藥卡可展開官方登記適應症原文</li>
+  <li><strong>睡眠呼吸與體重可同期對照</strong>：CPAP 每晚數據與體重共用同一條時間軸</li>
   <li><strong>帶得走的一份檔案</strong>：匯出 HTML 或 EPUB，互動保留，對方免安裝</li>
 </ul>
 
