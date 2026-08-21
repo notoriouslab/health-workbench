@@ -38,16 +38,20 @@
             在電腦用瀏覽器直接開啟，iPhone、iPad 需用會執行網頁程式的
             檢視器 App（「檔案」App 的預覽看不到內容）</li>
         </ol>
-        <p class="intro-foot">本工具不提供診斷、治療或用藥建議，如有醫療問題請諮詢合格醫事人員。
-          原始碼與說明：<code id="gh-url">github.com/notoriouslab/health-workbench</code>
-          <button id="gh-open-btn" type="button" class="linklike">開啟↗</button>
+        <p class="intro-foot">本工具不提供診斷、治療或用藥建議，如有醫療問題請諮詢合格醫事人員。</p>
+        <!-- 兩段（2026-08-21 走查）：免責是讀一次就不用再看的東西，與需要互動的
+             按鈕分開；版本狀態與原始碼都是「關於這個程式」且都帶按鈕，同一段。
+             全部塞一段的話斷行由視窗寬度決定，斷點落在哪不可控。 -->
+        <p class="intro-foot">
           <span id="app-version" class="dt"></span>
-          <button id="check-update-btn" type="button" class="linklike">檢查新版↗</button>
           <button id="update-toggle" type="button" class="linklike" hidden></button>
           <span id="update-note" class="dt"></span>
-          <button id="update-go" type="button" class="linklike" hidden>前往查看↗</button></p>
+          <button id="update-go" type="button" class="linklike" hidden>前往查看↗</button>
+          <span class="dt">｜原始碼與說明：</span><code id="gh-url">github.com/notoriouslab/health-workbench</code>
+          <button id="gh-open-btn" type="button" class="linklike">開啟↗</button>
+          <button id="check-update-btn" type="button" class="linklike">檢查新版↗</button></p>
         <p id="update-ask" class="intro-foot" hidden>啟動時要不要看看有沒有新版本？
-          只會查最新的版本號，不會送出你的任何資料，之後隨時可以在上面那一行關掉。
+          只會查最新的版本號，不會送出你的任何資料，之後隨時可以在上面的版本那一行關掉。
           <button id="update-yes" type="button" class="linklike">好</button>
           <button id="update-no" type="button" class="linklike">不用</button></p>
       </section>

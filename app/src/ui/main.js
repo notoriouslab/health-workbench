@@ -443,8 +443,11 @@ async function wireUi() {
       if (/[/\\]target[/\\]debug[/\\]/.test(res)) origin = "開發版";
       else if (/[/\\]target[/\\]release[/\\]/.test(res)) origin = "本機建置";
     } catch { /* 取不到就不標來源 */ }
+    // 帶「目前版本」標籤（2026-08-21 走查）：孤零零一個 `v0.9.0` 讀者得自己
+    // 猜是什麼版本。標籤寫在 JS 而不是 HTML 靜態文字，取不到版號時整段消失，
+    // 不會留下「目前版本 」這種斷句。
     const parts = [ver ? `v${ver}` : null, origin || null].filter(Boolean);
-    el.textContent = parts.length ? `｜${parts.join("・")}` : "";
+    el.textContent = parts.length ? `目前版本 ${parts.join("・")}` : "";
 
     // 更新檢查（app-shell「更新檢查的徵詢」）：首次啟動徵詢一次，同意後才查。
     // 沿用上面已取得的 ver 與 origin，不重算。
