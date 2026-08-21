@@ -1,6 +1,6 @@
 [package]
 name = "health-workbench-app"
-version = "0.8.0"
+version = "0.9.0"
 description = "多來源個人健康資料工作台桌面版"
 edition = "2021"
 
