@@ -320,6 +320,26 @@ test("摘要卡：內容為診間視角的精簡版", async () => {
   assert.ok(text.includes("本清單僅為就醫溝通輔助，不含醫療判斷"), "缺免責語");
 });
 
+test("摘要卡：含最近一次抽血的完整結果（列印不能折疊）", async () => {
+  // 「上次抽血結果如何」是診間最常被問的一句，摘要卡漏掉它就少了帶去看診
+  // 的主要用途之一（2026-08-21 走查發現）。列印出來的紙沒有「展開」動作，
+  // 所以這一節在摘要卡裡不折疊。
+  const base = await basePayload();
+  const { root } = await openTab(payloadWithMeds(base, [CURRENT]), "就醫");
+  const sheet = findAll(root, (el) => el.getAttribute?.("id") === "print-clinic")[0];
+  const text = sheet.textContent;
+  assert.match(text, /最近一次抽血（\d{4}-\d{2}-\d{2}）/,
+    `摘要卡缺最近一次抽血小節：${text.slice(0, 500)}`);
+  // fixture 的 nhi_sample 有檢驗列，項目名與數值都該在紙上
+  const labs = base.labs.filter((l) => l.value_numeric != null);
+  const last = labs[labs.length - 1];
+  assert.ok(last, "fixture 應有數值型檢驗列（否則這則測不到本意）");
+  assert.ok(text.includes(last.name),
+    `摘要卡未列出檢驗項目名 ${last.name}：${text.slice(0, 500)}`);
+  assert.ok(!findAll(sheet, (el) => el.localName === "details").length,
+    "摘要卡內不得有折疊區（列印出來就看不到裡面）");
+});
+
 test("摘要卡：EPUB 不顯示按鈕，App 內顯示導流說明", async () => {
   const base = await basePayload();
   const payload = payloadWithMeds(base, [CURRENT]);

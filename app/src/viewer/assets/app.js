@@ -812,7 +812,8 @@
   function ClinicSummarySheet({ sheetClass }) {
     const d = useMemo(() => clinicData(Date.now()), []);
     if (d.empty) return null;
-    const { fresh, activeMeds, measureRows, streaks, stalest } = d;
+    const { fresh, activeMeds, measureRows, lastLabDate, lastLabs,
+      streaks, stalest } = d;
     return html`<div class=${sheetClass} id="print-clinic">
       <h2>看診摘要卡</h2>
       <p class="note">成員：${DATA.meta.profile}｜產生日期：${DATA.meta.generated_at}
@@ -820,7 +821,7 @@
       ${fresh.stale && html`<p class="note">
         這份資料有一段時間沒更新了，更近期的就醫與檢驗不在裡面</p>`}
       ${activeMeds.length > 0 && html`<div>
-        <h3>目前在吃的藥（${activeMeds.length}）</h3>
+        <h3>近日用藥（${activeMeds.length}）</h3>
         <table>
           <thead><tr><th>藥品</th><th>成分</th><th>還剩</th></tr></thead>
           <tbody>${activeMeds.map((x) => html`<tr>
@@ -833,6 +834,15 @@
       ${measureRows.length > 0 && html`<div>
         <h3>居家量測</h3>
         <${MeasureTable} rows=${measureRows} plainUnit />
+      </div>`}
+      ${lastLabs.length > 0 && html`<div>
+        <h3>最近一次抽血（${lastLabDate}）</h3>
+        <table>
+          <thead><tr><th>項目</th><th>結果</th><th>參考值</th></tr></thead>
+          <tbody>${lastLabs.map((l) => html`<tr>
+            <td>${l.name}</td><td class="num">${l.value_text}</td>
+            <td>${l.ref_range || ""}</td></tr>`)}</tbody>
+        </table>
       </div>`}
       <${ChangesSection} streaks=${streaks} stalest=${stalest} />
       <p class="note">本清單僅為就醫溝通輔助，不含醫療判斷</p>
