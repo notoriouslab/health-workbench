@@ -21,10 +21,13 @@ const HAS_DATA_TABLES = PROFILE_DATA_TABLES.filter(t => t !== "source_documents"
 
 // 純函式：匯出檔名。檔名不安全字元（含控制字元）代換為底線。
 // ext 讓 HTML 與 EPUB 兩條匯出路徑共用同一套命名規則（含成員名與日期）。
+// 前綴用中文（2026-08-21 走查，UX 檢視 friction 16）：檔案會躺在 LINE 或
+// 郵件的附件列表裡，`dashboard_` 這種英文詞讓收檔的人認不出這是什麼。
+// `-private` 保留：它是給寄件人自己看的提醒，且已寫進 spec 與既有測試。
 export function exportFileName(memberName, dateStr, ext = "html") {
   const safe = String(memberName ?? "")
     .replaceAll(/[/\\:*?"<>|\u0000-\u001f]/g, "_").trim() || "成員";
-  return `dashboard_${safe}_${dateStr.replaceAll("-", "")}-private.${ext}`;
+  return `健康紀錄_${safe}_${dateStr.replaceAll("-", "")}-private.${ext}`;
 }
 
 // 藥品快取解析的決策核心（依賴注入純化，tests/ui/drug_cache_resolution

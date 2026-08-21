@@ -80,6 +80,43 @@
     return "order";
   }
 
+  /* 「目前在吃」判定（design D2；spec「目前在吃的藥的判定」）。
+     判定式：就醫日期＋給藥日數 > 今天。給藥日數是官方欄位（r1_1.4／
+     r3_1.6「給藥日數」），屬資料自帶的事實，不是我們設的閾值。
+     NEVER 加寬容期、NEVER 以預設天數補值：兩者都是憑空造出事實，且會把
+     已停藥的藥留在現用清單，代價大於漏報（帶去看診會誤導）。
+     NEVER 改成「最近 N 個月開過就算現用」：三天份感冒藥會被判成現用。
+     items＝同一藥品的處方紀錄集合；取其中日期最大的一筆判定（不倚賴
+     呼叫端的排序）。慢性病連續處方箋不需特別處理：分次領藥各自是獨立
+     紀錄並各帶給藥日數，起算日由既有「藥局交付調劑日期回退」保證。
+     todayMs 可注入（測試用）；未給則取當下，讓匯出的單檔 HTML 隔幾天
+     再開時剩餘天數是那天的事實，而不是產生日凍結的舊值。 */
+  function medStatus(items, todayMs) {
+    const now = todayMs == null ? Date.now() : todayMs;
+    const latest = (items || []).filter((m) => m && m.date)
+      .reduce((a, b) => (a && a.date >= b.date ? a : b), null);
+    if (!latest) return { active: false, remainingDays: null, reason: null };
+    const days = latest.days_supply;
+    if (days == null || !(Number(days) > 0)) {
+      return { active: false, remainingDays: null, reason: "no_days_supply" };
+    }
+    const start = Date.parse(`${latest.date}T00:00:00Z`);
+    if (Number.isNaN(start)) {
+      return { active: false, remainingDays: null, reason: null };
+    }
+    const remaining = Math.ceil((start + Number(days) * 864e5 - now) / 864e5);
+    return remaining > 0
+      ? { active: true, remainingDays: remaining, reason: null }
+      : { active: false, remainingDays: null, reason: null };
+  }
+
+  /* 用藥列的顯示取值（診間視角區塊、摘要卡、列印清單共用）。
+     medRowName 只讀 .m，所以帶 .m 的任何形狀都能傳；medRecent 取日期最大的
+     一筆，與 medStatus 的判定基準同一筆（不倚賴呼叫端排序）。 */
+  const medRowName = (g) => g.m.drug_zh || g.m.order_name;
+  const medRecent = (g) => g.items
+    .reduce((a, b) => (a && a.date >= b.date ? a : b), null).date;
+
   /* ---------- 共用元件 ---------- */
   function latestAndDelta(series, daysBack) {
     // series: [[date, val]...] 日序列；回傳 [最新值, 與 daysBack 天前的差]
@@ -490,8 +527,321 @@
     </section>`;
   }
 
+  /* ---------- 診間視角的純函式（design D3／D4／D5；spec「診間視角區塊」） ----------
+     全部只讀既有 payload，MUST NOT 新增 payload 欄位。todayMs 一律可注入
+     （測試用）；未給則取當下，因為「還剩幾天」「資料是不是舊的」都必須是
+     開啟當天的事實，不能凍結在產生日（匯出的單檔 HTML 會被隔幾天才打開）。 */
+
+  /* 窗格聚合：回傳 { median, days } 或 null（該窗格無資料）。
+     measures 序列形狀為 [[day, value], ...]，payload 端已逐日取中位數
+     （provider/payload.js 的 dailyMeasureSeries），序列裡**沒有**原始
+     量測筆數，因此可信度指標 MUST 是「有量測的天數」。寫成「次數」就是
+     憑空造出資料層沒有的精度（spec 明文）。
+     NEVER 改用 latestAndDelta：它回的是最新值與變化量，與窗格中位數是
+     不同語意，硬套會讓兩天有量與二十八天有量看起來一樣可信。 */
+  function windowStat(series, days, todayMs) {
+    const now = todayMs == null ? Date.now() : todayMs;
+    const from = now - days * DAY;
+    const vals = (series || [])
+      .filter((p) => {
+        const t = tsOf(p[0]);
+        return !Number.isNaN(t) && t > from && t <= now;
+      })
+      .map((p) => p[1]).filter((v) => v != null)
+      .sort((a, b) => a - b);
+    if (!vals.length) return null;
+    const mid = Math.floor(vals.length / 2);
+    const median = vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2;
+    return { median: Math.round(median * 10) / 10, days: vals.length };
+  }
+
+  /* 單一數值相對參考值的位置：null＝參考值無法解析（保守不報）。
+     判定一律走既有 parseRef（spec：MUST NOT 複製第二份參考值解析實作）。 */
+  function refPosition(value, ref) {
+    if (!ref || value == null) return null;
+    if (ref.band) {
+      if (value < ref.band[0]) return "low";
+      return value > ref.band[1] ? "high" : "in";
+    }
+    if (ref.limit != null) {
+      if (ref.kind === "upper") return value > ref.limit ? "high" : "in";
+      return value < ref.limit ? "low" : "in";
+    }
+    return null;
+  }
+
+  /* 規則 A（design D4）：某檢驗項目最近連續三次都落在參考值之外。
+     「三次」是本設計選的呈現門檻，非醫學判準（spec 明文標示）。
+     參考值逐列解析（同一項目的參考值可能隨時期改變），任一列解析不出
+     （年齡分段複合形等）即整項排除：不畫比錯畫好，這裡同理。 */
+  const REF_STREAK = 3;
+
+  function refStreakItems(labs, streak) {
+    const need = streak == null ? REF_STREAK : streak;
+    const byName = new Map();
+    for (const l of labs || []) {
+      if (l.value_numeric == null) continue;
+      if (!byName.has(l.name)) byName.set(l.name, []);
+      byName.get(l.name).push(l);
+    }
+    const out = [];
+    for (const [name, rows] of byName) {
+      const sorted = [...rows].sort(
+        (a, b) => String(a.test_date).localeCompare(String(b.test_date)));
+      const recent = sorted.slice(-need);
+      if (recent.length < need) continue;
+      const sides = recent.map(
+        (r) => refPosition(r.value_numeric, parseRef(r.ref_range)));
+      if (sides.some((x) => x == null || x === "in")) continue;
+      out.push({ name, rows: recent.map((r, i) => ({
+        date: r.test_date, value: r.value_numeric, side: sides[i],
+        ref: r.ref_range })) });
+    }
+    return out.sort((a, b) => String(b.rows[b.rows.length - 1].date)
+      .localeCompare(String(a.rows[a.rows.length - 1].date)));
+  }
+
+  /* 規則 B（design D4）：距上次檢驗最久的前三個項目，只呈現項目名與上次日期。
+     **MUST NOT 使用任何絕對天數門檻**：一年這個數字正好是別的系統的收載
+     區間，寫成常數會讓後人以為在編碼那個區間；相對排序也更有用（隨使用者
+     自己的資料自適應）。只納入歷史上出現兩次以上的項目：只驗過一次不構成
+     「很久沒驗」。 */
+  function stalestItems(labs, top) {
+    const byName = new Map();
+    for (const l of labs || []) {
+      const d = String(l.test_date || "");
+      if (!d) continue;
+      const cur = byName.get(l.name) || { n: 0, last: "" };
+      cur.n += 1;
+      if (d > cur.last) cur.last = d;
+      byName.set(l.name, cur);
+    }
+    return [...byName.entries()]
+      .filter(([, v]) => v.n >= 2)
+      .sort((a, b) => a[1].last.localeCompare(b[1].last)
+        || String(a[0]).localeCompare(String(b[0])))
+      .slice(0, top == null ? 3 : top)
+      .map(([name, v]) => ({ name, last: v.last }));
+  }
+
+  /* 資料截止日的新鮮度（design D5）：距今超過三個月才追加提示。三個月是
+     本設計選的呈現門檻（非醫學判準），與任何外部系統的收載區間無關——
+     所以措辭守衛刻意不擋「三個月」，見 forbidden_guard 的說明。 */
+  const STALE_MONTHS = 3;
+
+  function dataFreshness(dateMax, todayMs) {
+    const t = tsOf(dateMax);
+    if (Number.isNaN(t)) return { date: null, stale: false };
+    const now = todayMs == null ? Date.now() : todayMs;
+    return { date: dateMax, stale: now - t > STALE_MONTHS * 30 * DAY };
+  }
+
+  /* ---------- 診間視角區塊（design D1／D7；spec「診間視角區塊」） ----------
+     置於就醫分頁篩選器**之上**，且 MUST NOT 接收篩選狀態（type／fac）：
+     篩選服務於下方的歷史瀏覽，與本區塊的「目前狀態」語意正交。選了牙科後
+     「目前在吃的藥」只剩牙科藥就語意錯亂了。
+     四個小節都是有資料才渲染，全空則整個區塊回 null：只匯健保資料的使用者
+     不該看到兩個常駐空框（像功能壞了）。
+     居家量測的候選集固定（design D3）：診間十秒需要少而確定，全列會變成
+     第二個總覽頁。AHI 的單位「次/小時」是機器指標本身的單位，與可信度指標
+     的「天數」是兩回事，勿混。 */
+  const clinicMeasures = () => [
+    ["血壓（收縮）", DATA.measures["收縮壓"] || [], "mmHg"],
+    ["血壓（舒張）", DATA.measures["舒張壓"] || [], "mmHg"],
+    ["體重", DATA.measures["體重"] || [], "kg"],
+    ["睡眠時數", SLEEP_HOURS, "小時"],
+    ["AHI", cpapSeries("ahi"), "次/小時"],
+    ["呼吸器使用時數",
+      cpapSeries("usage_min").map(([d, v]) => [d, Math.round((v / 60) * 10) / 10]),
+      "小時"],
+  ];
+
+  const REF_SIDE_ZH = { high: "高於參考上限", low: "低於參考下限" };
+
+  /* 檢驗小節超過這個項目數才預設收合（2026-08-21 走查）：一次抽血常常只有
+     兩三項，一律收合等於多要一次點擊；項目多的時候才是「太長」的問題。 */
+  const LAB_OPEN_MAX = 5;
+
+  /* 區塊與摘要卡（design D6）走同一個計算函式（各自 useMemo 呼叫一次）：
+     兩處各寫一份判定的話，摘要卡與畫面上的區塊會在判定改動後靜默分歧。 */
+  function clinicData(now) {
+    const g = {};
+    for (const m of DATA.medications) {
+      if (medCategory(m) === "order") continue;   // 診療項目不是藥
+      const key = medKey(m);
+      (g[key] = g[key] || { key, items: [], m }).items.push(m);
+    }
+    const activeMeds = Object.values(g)
+      .map((x) => ({ ...x, st: medStatus(x.items, now) }))
+      .filter((x) => x.st.active)
+      .sort((a, b) => a.st.remainingDays - b.st.remainingDays);
+
+    const measureRows = clinicMeasures()
+      .map(([label, series, unit]) => ({ label, unit,
+        w7: windowStat(series, 7, now), w30: windowStat(series, 30, now) }))
+      .filter((r) => r.w7 || r.w30);
+
+    // 檢驗小節＝最近一次抽血那天的數值項目（診間最常被問「上次驗的怎麼樣」）。
+    // labs 已按 test_date 升冪（provider 查詢），最後一筆的日期即最近一次。
+    const numericLabs = DATA.labs.filter((l) => l.value_numeric != null);
+    const lastLabDate = numericLabs.length
+      ? numericLabs[numericLabs.length - 1].test_date : null;
+    const lastLabs = lastLabDate
+      ? numericLabs.filter((l) => l.test_date === lastLabDate) : [];
+
+    const streaks = refStreakItems(DATA.labs);
+    const stalest = stalestItems(DATA.labs);
+    return { fresh: dataFreshness(DATA.meta.date_max, now),
+      activeMeds, measureRows, lastLabDate, lastLabs, streaks, stalest,
+      empty: !activeMeds.length && !measureRows.length && !lastLabs.length
+        && !streaks.length && !stalest.length };
+  }
+
+  const winZh = (w) => (w ? `${w.median}（${w.days} 天有量測）` : "—");
+
+  /* 居家量測表與「資料裡的變化」節：區塊與摘要卡共用同一段渲染。
+     兩處各寫一份的話，使用者可見的措辭改一處會漏另一處。
+     plainUnit＝列印視圖用純文字單位（列印時灰字的 .note 讀不出來）。 */
+  function MeasureTable({ rows, plainUnit }) {
+    return html`<div>
+      <table>
+        <thead><tr><th>項目</th><th>近 7 天</th><th>近 30 天</th></tr></thead>
+        <tbody>${rows.map((r) => html`<tr>
+          <td>${r.label}${!r.unit ? "" : plainUnit
+            ? ` ${r.unit}` : html` <span class="note">${r.unit}</span>`}</td>
+          <td class="num">${winZh(r.w7)}</td>
+          <td class="num">${winZh(r.w30)}</td></tr>`)}</tbody>
+      </table>
+      <p class="note">每格是那段期間每日數值的中位數</p>
+    </div>`;
+  }
+
+  /* 措辭 MUST NOT 含建議動詞（「應該」「建議」「需要」「請」）：本節是純
+     事實陳述，不構成醫療判斷（spec「資料裡的變化（自動生成、唯讀）」）。 */
+  function ChangesSection({ streaks, stalest, disclaimer }) {
+    if (!streaks.length && !stalest.length) return null;
+    return html`<div>
+      <h3>資料裡的這些變化，供就醫溝通參考</h3>
+      ${streaks.length > 0 && html`<ul>
+        ${streaks.map((it) => html`<li>${it.name}：最近三次${
+          it.rows.every((r) => r.side === it.rows[0].side)
+            ? REF_SIDE_ZH[it.rows[0].side] : "都在參考值之外"}（${
+          it.rows.map((r) => `${r.date.slice(5)} ${r.value}`).join("、")}）</li>`)}
+      </ul>`}
+      ${stalest.length > 0 && html`<p class="note">距上次檢驗最久的項目：${
+        stalest.map((s) => `${s.name}（${s.last}）`).join("、")}</p>`}
+      ${disclaimer && html`<p class="note">本清單僅為就醫溝通輔助，不含醫療判斷</p>`}
+    </div>`;
+  }
+
+  function ClinicView({ onPrint }) {
+    const d = useMemo(() => clinicData(Date.now()), []);
+    if (d.empty) return null;
+    const { fresh, activeMeds, measureRows, lastLabDate, lastLabs,
+      streaks, stalest } = d;
+
+    // 列印鈕擺在區塊標頭那一行的右端（2026-08-21 走查）：它印的就是這個
+    // 區塊，擺在下方的就醫篩選列會看起來像在篩選什麼，自己獨占一列又太空。
+    // 樣式與文案沿用既有列印鈕的形式（.catbtn、「列印<對象>」）：兩顆做
+    // 同一件事的按鈕長得不一樣，使用者要多花一次判斷。
+    return html`<div class="card clinic-view">
+      <div class="clinic-head">
+        <span class="note">資料截止 ${fresh.date || "—"}${fresh.stale
+          ? "｜這份資料有一段時間沒更新了，更近期的就醫與檢驗不在裡面" : ""}</span>
+        ${!window.HWB_EPUB && !window.frameElement && html`<button class="catbtn"
+          onClick=${onPrint}>列印看診摘要卡</button>`}
+      </div>
+      ${!window.HWB_EPUB && !!window.frameElement && html`<p class="note">
+        要列印看診摘要卡：先按上方「匯出單檔 HTML」，用瀏覽器開啟後按
+        「列印看診摘要卡」，可直接列印或存成 PDF</p>`}
+
+      ${activeMeds.length > 0 && html`<div>
+        <h3>近日用藥</h3>
+        <table>
+          <thead><tr><th>藥品</th><th>成分</th><th>最近處方</th><th>還剩</th></tr></thead>
+          <tbody>${activeMeds.map((x) => html`<tr>
+            <td>${medRowName(x)}</td>
+            <td class="dt">${x.m.ingredient || ""}</td>
+            <td class="dt">${medRecent(x)}</td>
+            <td class="num">${x.st.remainingDays} 天</td></tr>`)}</tbody>
+        </table>
+        <p class="note">自費藥與保健食品這裡不會有，看診時可以自己補充</p>
+      </div>`}
+
+      ${measureRows.length > 0 && html`<div>
+        <h3>血壓、體重量得怎麼樣？</h3>
+        <${MeasureTable} rows=${measureRows} />
+      </div>`}
+
+      ${lastLabs.length > 0 && html`<details open=${lastLabs.length <= LAB_OPEN_MAX}>
+        <summary><b>最近抽血驗了什麼？</b>
+          <span class="note">${lastLabDate}｜${lastLabs.length} 項</span></summary>
+        <table>
+          <thead><tr><th>項目</th><th>結果</th><th>參考值</th></tr></thead>
+          <tbody>${lastLabs.map((l) => html`<tr>
+            <td>${l.name}</td><td class="num">${l.value_text}</td>
+            <td class="dt">${l.ref_range || ""}</td></tr>`)}</tbody>
+        </table>
+      </details>`}
+
+      <${ChangesSection} streaks=${streaks} stalest=${stalest} disclaimer />
+
+      <p class="note">補上居家量測會更有用，例如 Apple 健康等資料</p>
+    </div>`;
+  }
+
+  /* 列印一份指定的 print-sheet（design D6；spec「只印被觸發的那一份」）。
+     兩個要點：
+     1. active class 由 state 控制，不直接操作 DOM——檢視層其餘部分一律走
+        preact 渲染，混用手改 DOM 會在下次渲染被蓋掉。
+     2. window.print() 放在 useEffect 內：它是同步阻塞的，緊接 setState 之後
+        呼叫會在 DOM 還沒套上 active 之前就送去列印，印出來的是空白。 */
+  function usePrintSheet() {
+    const [printing, setPrinting] = useState(false);
+    useEffect(() => {
+      if (!printing) return;
+      window.print();
+      setPrinting(false);
+    }, [printing]);
+    return [printing ? "print-sheet active" : "print-sheet", () => setPrinting(true)];
+  }
+
+  /* 看診摘要卡（design D6；spec「看診摘要卡的列印視圖」）：
+     診間視角區塊的一頁式精簡版。與用藥清單並存而非取代：用藥清單是完整
+     清單（給藥師或長輩），摘要卡是十秒速覽。 */
+  function ClinicSummarySheet({ sheetClass }) {
+    const d = useMemo(() => clinicData(Date.now()), []);
+    if (d.empty) return null;
+    const { fresh, activeMeds, measureRows, streaks, stalest } = d;
+    return html`<div class=${sheetClass} id="print-clinic">
+      <h2>看診摘要卡</h2>
+      <p class="note">成員：${DATA.meta.profile}｜產生日期：${DATA.meta.generated_at}
+        ｜資料截止 ${fresh.date || "—"}</p>
+      ${fresh.stale && html`<p class="note">
+        這份資料有一段時間沒更新了，更近期的就醫與檢驗不在裡面</p>`}
+      ${activeMeds.length > 0 && html`<div>
+        <h3>目前在吃的藥（${activeMeds.length}）</h3>
+        <table>
+          <thead><tr><th>藥品</th><th>成分</th><th>還剩</th></tr></thead>
+          <tbody>${activeMeds.map((x) => html`<tr>
+            <td>${medRowName(x)}</td>
+            <td>${x.m.ingredient || ""}</td>
+            <td class="num">${x.st.remainingDays} 天</td></tr>`)}</tbody>
+        </table>
+        <p class="note">自費藥與保健食品這裡不會有，看診時可以自己補充</p>
+      </div>`}
+      ${measureRows.length > 0 && html`<div>
+        <h3>居家量測</h3>
+        <${MeasureTable} rows=${measureRows} plainUnit />
+      </div>`}
+      <${ChangesSection} streaks=${streaks} stalest=${stalest} />
+      <p class="note">本清單僅為就醫溝通輔助，不含醫療判斷</p>
+    </div>`;
+  }
+
   /* ---------- 時間軸 ---------- */
   function Timeline({ focus }) {
+    const [clinicSheetClass, printClinic] = usePrintSheet();
     const [type, setType] = useState("");
     const [fac, setFac] = useState("");
     const [open, setOpen] = useState((focus && focus.enc) || null);
@@ -531,6 +881,7 @@
       }
     }, []);
     return html`<section>
+      <${ClinicView} onPrint=${printClinic} />
       <div class="filters">
         <select value=${type} onChange=${(e) => { setType(e.target.value); setFac(""); }}>
           <option value="">全部類型</option>
@@ -578,6 +929,7 @@
           ${DATA.immunizations.map((i) => html`<tr><td class="dt">${i.date}</td>
             <td>${i.vaccine_name}</td><td class="dt">${i.facility_name || ""}</td></tr>`)}
         </table></div>`}
+      <${ClinicSummarySheet} sheetClass=${clinicSheetClass} />
     </section>`;
   }
 
@@ -656,30 +1008,66 @@
      EPUB（HWB_EPUB 旗標）維持整組不顯示。 */
   const PRINT_CATS = [["drug", "藥品"], ["tcm", "中醫用藥"]];
 
-  function MedPrintSheet({ groups }) {
+  /* 每節內再分「目前在吃」與「過往」（design D6；spec MODIFIED「列印用藥清單」）：
+     先前版本不分區，使用者會把早已停用的藥一併帶進就醫溝通場合。判定呼叫
+     medStatus，與診間視角區塊是同一實作（spec：MUST NOT 另寫一份）。
+     子區為空則整段不輸出（不留空表格，與診間視角區塊同一原則）。 */
+  function splitByStatus(gs, todayMs) {
+    const cur = [], past = [];
+    for (const g of gs) {
+      const st = medStatus(g.items, todayMs);
+      (st.active ? cur : past).push({ g, st });
+    }
+    cur.sort((a, b) => a.st.remainingDays - b.st.remainingDays);
+    return { cur, past };
+  }
+
+  function MedPrintSheet({ groups, sheetClass }) {
+    const now = Date.now();
     const secs = PRINT_CATS
       .map(([c, label]) => [label, groups.filter((g) => medCategory(g.m) === c)])
       .filter(([, gs]) => gs.length);
     if (!secs.length) return null;
     const ver = DATA.meta.drug_cache ? DATA.meta.drug_cache.updated_at : "未建快取";
-    return html`<div class="print-sheet">
+    const fresh = dataFreshness(DATA.meta.date_max, now);
+    return html`<div class=${sheetClass || "print-sheet"} id="print-meds">
       <h2>用藥清單</h2>
       <p class="note">成員：${DATA.meta.profile}｜產生日期：${DATA.meta.generated_at}</p>
+      <p class="note">資料截止 ${fresh.date || "—"}</p>
       <p class="note">藥品資訊來自健保用藥品項檔（版本 ${ver}）</p>
-      ${secs.map(([label, gs]) => html`<div>
+      ${secs.map(([label, gs]) => { const { cur, past } = splitByStatus(gs, now);
+        return html`<div>
         <h3>${label}（${gs.length}）</h3>
-        <table>
-          <thead><tr><th>名稱</th><th>成分</th><th>最近處方日期</th></tr></thead>
-          <tbody>${gs.map((g) => html`<tr>
-            <td>${g.m.drug_zh || g.m.order_name}</td>
-            <td>${g.m.ingredient || ""}</td>
-            <td class="dt">${g.items[0].date}</td></tr>`)}</tbody>
-        </table></div>`)}
+        ${cur.length > 0 && html`<div>
+          <h4>目前在吃（${cur.length}）</h4>
+          <table>
+            <thead><tr><th>名稱</th><th>成分</th><th>最近處方日期</th>
+              <th>還剩</th></tr></thead>
+            <tbody>${cur.map(({ g, st }) => html`<tr>
+              <td>${medRowName(g)}</td>
+              <td>${g.m.ingredient || ""}</td>
+              <td class="dt">${medRecent(g)}</td>
+              <td class="num">${st.remainingDays} 天</td></tr>`)}</tbody>
+          </table></div>`}
+        ${past.length > 0 && html`<div>
+          <h4>過往（${past.length}）</h4>
+          <table>
+            <thead><tr><th>名稱</th><th>成分</th><th>最近處方日期</th>
+              <th></th></tr></thead>
+            <tbody>${past.map(({ g, st }) => html`<tr>
+              <td>${medRowName(g)}</td>
+              <td>${g.m.ingredient || ""}</td>
+              <td class="dt">${medRecent(g)}</td>
+              <td class="note">${st.reason === "no_days_supply"
+                ? "無給藥日數" : ""}</td></tr>`)}</tbody>
+          </table></div>`}
+        </div>`; })}
       <p class="note">本清單僅為就醫溝通輔助，不含醫療判斷</p>
     </div>`;
   }
 
   function Meds({ focus, go }) {
+    const [medSheetClass, printMeds] = usePrintSheet();
     const groups = useMemo(() => {
       const g = {};
       DATA.medications.forEach((m) => {
@@ -704,7 +1092,7 @@
           class="catbtn ${cat === c ? "on" : ""}"
           onClick=${() => { setCat(c); setOpenKey(null); }}>${label}（${byCat(c).length}）</button>`)}
         ${!window.HWB_EPUB && !window.frameElement && html`<button class="catbtn"
-          onClick=${() => window.print()}>列印用藥清單</button>`}
+          onClick=${printMeds}>列印用藥清單</button>`}
       </div>
       ${!window.HWB_EPUB && !!window.frameElement && html`<p class="note">
         要列印用藥清單：先按上方「匯出單檔 HTML」，用瀏覽器開啟後按
@@ -714,7 +1102,7 @@
         點列展開處方時間軸。</p>
       ${byCat(cat).map((g) => html`<${MedGroup} g=${g} open=${openKey === g.key} go=${go}
         onToggle=${() => setOpenKey(openKey === g.key ? null : g.key)} />`)}
-      <${MedPrintSheet} groups=${groups} />
+      <${MedPrintSheet} groups=${groups} sheetClass=${medSheetClass} />
     </section>`;
   }
 
@@ -883,6 +1271,7 @@
     const know = DATA.knowledge[sel];
     if (!labNames.length) return html`<section><p class="note">尚無檢驗資料。</p></section>`;
     return html`<section>
+      <p class="note">這一頁是醫療院所的檢驗結果（來自健康存摺）。</p>
       <${RangeBar} range=${range} setRange=${setRange}>
         <span class="note">本頁各圖共用同一時間區間</span>
       </${RangeBar}>
@@ -1025,6 +1414,8 @@
     const blocks = [body, circ, activity, other].filter(Boolean);
     if (!blocks.length) return html`<section><p class="note">尚無量測資料。</p></section>`;
     return html`<section>
+      <p class="note">這一頁是你自己量的與健檢量的數值（Apple 健康、
+        呼吸器、成人健檢）。</p>
       <${RangeBar} range=${range} setRange=${setRange}>
         <span class="note">本頁各圖共用同一時間區間，可直接同期對照</span>
       </${RangeBar}>

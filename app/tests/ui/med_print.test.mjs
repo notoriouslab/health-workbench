@@ -69,12 +69,18 @@ function renderViewer(payload, { epub = false, inApp = false } = {}) {
   const root = doc.createElement("div");
   doc.registerId("app", root);
   const printCalls = [];
+  // 記錄 print 當下帶 active 的列印視圖 id：spec「只印被觸發的那一份」的
+  // 判準就在這個時刻，print 之後 active 會被清掉，事後查 DOM 一律是空的。
+  const activeSheets = () => findAll(root, (el) => {
+    const c = String(el.getAttribute?.("class") || "");
+    return c.includes("print-sheet") && c.includes("active");
+  }).map((el) => el.getAttribute("id"));
   const sandbox = {
     document: doc, console,
     setTimeout, clearTimeout,
     requestAnimationFrame: (fn) => setTimeout(fn, 0),
     cancelAnimationFrame: (id) => clearTimeout(id),
-    print: () => printCalls.push(Date.now()),
+    print: () => printCalls.push(activeSheets()),
   };
   sandbox.window = sandbox;
   sandbox.self = sandbox;
@@ -97,18 +103,20 @@ const buttonByText = (root, label) => findAll(root,
 const sheetOf = (root) => findAll(root, (el) => String(
   el.getAttribute?.("class") || "").includes("print-sheet"))[0];
 
-/* 開到用藥分頁，回傳 { root, flush, printCalls } */
-async function openMeds(payload, opts) {
+/* 開到指定分頁，回傳 { root, flush, printCalls } */
+async function openTab(payload, label, opts) {
   const ctx = renderViewer(payload, opts);
   await ctx.flush();
-  const tab = buttonByText(ctx.root, "用藥");
-  assert.ok(tab, "找不到用藥分頁按鈕");
+  const tab = buttonByText(ctx.root, label);
+  assert.ok(tab, `找不到${label}分頁按鈕`);
   tab.dispatch("click");
   await ctx.flush();
   assert.ok(!ctx.root.textContent.includes("分頁載入失敗"),
-    `用藥分頁落入錯誤邊界：${ctx.root.textContent.slice(0, 300)}`);
+    `${label}分頁落入錯誤邊界：${ctx.root.textContent.slice(0, 300)}`);
   return ctx;
 }
+
+const openMeds = (payload, opts) => openTab(payload, "用藥", opts);
 
 test("列印清單：藥品與中醫用藥兩節，每列名稱＋成分＋最近處方日期", async () => {
   const base = await basePayload();
@@ -157,12 +165,16 @@ test("未建品項檔快取：頁首版本標為未建快取", async () => {
 
 test("列印按鈕呼叫 window.print（不開新視窗、不產檔）", async () => {
   const base = await basePayload();
-  const { root, printCalls } = await openMeds(payloadWithMeds(base, [WESTERN]));
+  const { root, flush, printCalls } = await openMeds(payloadWithMeds(base, [WESTERN]));
   const btn = buttonByText(root, "列印用藥清單");
   assert.ok(btn, "缺「列印用藥清單」按鈕");
   assert.equal(printCalls.length, 0, "渲染階段不該呼叫 print");
   btn.dispatch("click");
+  // print 呼叫在 useEffect 內（DOM 要先套上 active class 才送印），故需 flush
+  await flush();
   assert.equal(printCalls.length, 1, "按鈕未呼叫 window.print");
+  assert.deepEqual(printCalls[0], ["print-meds"],
+    "列印當下只有用藥清單那一份該是作用中");
 });
 
 test("EPUB（window.HWB_EPUB=true）：不渲染列印按鈕", async () => {
@@ -199,12 +211,15 @@ test("樣式表：清單平時隱藏，列印時只留清單", () => {
     "缺 .print-sheet 平時隱藏規則");
   const print = css.slice(css.indexOf("@media print"));
   assert.ok(print.includes("@media print"), "缺 @media print 區塊");
-  assert.match(print, /body:has\(\.print-sheet\)\s+header\s*\{\s*display:\s*none\s*!important/,
+  // 選擇器 MUST 帶 .active：檢視頁有兩份列印視圖，只認 .print-sheet 的話
+  // 兩份會同時進入列印輸出（change clinic-visit-view D6）
+  assert.match(print,
+    /body:has\(\.print-sheet\.active\)\s+header\s*\{\s*display:\s*none\s*!important/,
     "列印時未隱藏標頭（導覽與搜尋）");
   assert.match(print,
-    /body:has\(\.print-sheet\)\s+section\s*>\s*\*:not\(\.print-sheet\)\s*\{\s*display:\s*none\s*!important/,
-    "列印時未隱藏分頁內非清單內容");
-  assert.match(print, /\.print-sheet\s*\{\s*display:\s*block/, "列印時未顯示清單");
+    /body:has\(\.print-sheet\.active\)\s+section\s*>\s*\*:not\(\.print-sheet\.active\)\s*\{\s*display:\s*none\s*!important/,
+    "列印時未隱藏分頁內非作用中清單的內容");
+  assert.match(print, /\.print-sheet\.active\s*\{\s*display:\s*block/, "列印時未顯示清單");
 });
 
 test("列印清單表格有 thead（跨頁重印表頭）＋列印樣式規則", async () => {
@@ -215,9 +230,9 @@ test("列印清單表格有 thead（跨頁重印表頭）＋列印樣式規則",
   assert.equal(theads.length, 2, "藥品與中醫用藥兩節的表格都該有 thead");
   const css = readFileSync(new URL("style.css", ASSETS), "utf-8");
   const print = css.slice(css.indexOf("@media print"));
-  assert.match(print, /\.print-sheet thead \{ display: table-header-group/,
-    "缺 thead 跨頁重印規則（第二頁起會變三欄無標題裸表）");
-  assert.match(print, /\.print-sheet h3 \{ page-break-after: avoid/,
+  assert.match(print, /\.print-sheet\.active thead \{ display: table-header-group/,
+    "缺 thead 跨頁重印規則（第二頁起會變無標題裸表）");
+  assert.match(print, /\.print-sheet\.active h3 \{ page-break-after: avoid/,
     "缺節標題防孤兒規則");
 });
 
@@ -234,4 +249,89 @@ test("App 內（iframe）：不渲染列印按鈕、顯示匯出導流說明（2
   const plain = await openMeds(payload);
   assert.ok(buttonByText(plain.root, "列印用藥清單"));
   assert.ok(!plain.root.textContent.includes("先按上方「匯出單檔 HTML」"));
+});
+
+/* ===== 現用與過往分區、看診摘要卡（change clinic-visit-view T5／T6） =====
+   日期相對於真實今天生成：判定內部取 Date.now()（匯出的單檔 HTML 隔幾天
+   打開時要算那天的事實），寫死絕對日期的向量會隨時間漂移。 */
+const isoAgo = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+const CURRENT = med(4, { drug_zh: "現用藥丁錠", ingredient: "成分丁",
+  date: isoAgo(5), days_supply: 30 });
+const OLD = med(5, { drug_zh: "舊藥戊錠", ingredient: "成分戊",
+  date: isoAgo(730), days_supply: 28 });
+const NO_DAYS = med(6, { drug_zh: "無日數藥己錠", ingredient: "成分己",
+  date: isoAgo(3), days_supply: null });
+
+test("列印清單：分「目前在吃」與「過往」，現用區有剩餘天數", async () => {
+  const base = await basePayload();
+  const { root } = await openMeds(payloadWithMeds(base, [CURRENT, OLD]));
+  const text = sheetOf(root).textContent;
+  assert.ok(text.includes("目前在吃（1）"), `缺現用區：${text.slice(0, 400)}`);
+  assert.ok(text.includes("過往（1）"), `缺過往區：${text.slice(0, 400)}`);
+  assert.ok(text.includes("現用藥丁錠") && text.includes("25 天"),
+    `現用藥應列在現用區並顯示剩餘天數：${text}`);
+  assert.ok(text.includes("舊藥戊錠"), "兩年前的藥應列在過往區");
+  assert.ok(text.indexOf("現用藥丁錠") < text.indexOf("舊藥戊錠"),
+    "現用區必須排在過往區之前（診間先看的是現在在吃什麼）");
+});
+
+test("列印清單：缺給藥日數者歸過往並標註", async () => {
+  const base = await basePayload();
+  const { root } = await openMeds(payloadWithMeds(base, [CURRENT, NO_DAYS]));
+  const text = sheetOf(root).textContent;
+  assert.ok(text.includes("無日數藥己錠"), "缺項");
+  assert.ok(text.includes("無給藥日數"), `缺無給藥日數標註：${text}`);
+  assert.ok(text.includes("目前在吃（1）") && text.includes("過往（1）"),
+    "缺給藥日數者 MUST NOT 進現用區");
+});
+
+test("列印清單：頁首含資料截止日", async () => {
+  const base = await basePayload();
+  const p = payloadWithMeds(base, [CURRENT]);
+  p.meta.date_max = isoAgo(12);
+  const { root } = await openMeds(p);
+  assert.ok(sheetOf(root).textContent.includes(`資料截止 ${isoAgo(12)}`),
+    "頁首缺資料截止日");
+});
+
+test("摘要卡：按鈕在就醫分頁，列印時只有摘要卡是作用中", async () => {
+  const base = await basePayload();
+  const { root, flush, printCalls } = await openTab(
+    payloadWithMeds(base, [CURRENT]), "就醫");
+  const btn = buttonByText(root, "列印看診摘要卡");
+  assert.ok(btn, "缺「列印看診摘要卡」按鈕");
+  btn.dispatch("click");
+  await flush();
+  assert.deepEqual(printCalls, [["print-clinic"]],
+    "列印當下只有摘要卡該是作用中（用藥清單不得同時進入列印輸出）");
+});
+
+test("摘要卡：內容為診間視角的精簡版", async () => {
+  const base = await basePayload();
+  const { root } = await openTab(payloadWithMeds(base, [CURRENT, OLD]), "就醫");
+  const sheet = findAll(root, (el) => el.getAttribute?.("id") === "print-clinic")[0];
+  assert.ok(sheet, "缺摘要卡 DOM");
+  const text = sheet.textContent;
+  assert.ok(text.includes("看診摘要卡"), "缺標題");
+  assert.ok(text.includes("成員：測試成員"), "缺成員名");
+  assert.ok(text.includes("現用藥丁錠") && text.includes("25 天"),
+    `摘要卡缺現用藥：${text.slice(0, 400)}`);
+  assert.ok(!text.includes("舊藥戊錠"), "摘要卡不該列已停用的藥");
+  assert.ok(text.includes("本清單僅為就醫溝通輔助，不含醫療判斷"), "缺免責語");
+});
+
+test("摘要卡：EPUB 不顯示按鈕，App 內顯示導流說明", async () => {
+  const base = await basePayload();
+  const payload = payloadWithMeds(base, [CURRENT]);
+  const epub = await openTab(payload, "就醫", { epub: true });
+  assert.ok(!buttonByText(epub.root, "列印看診摘要卡"),
+    "EPUB 旗標下不該渲染列印按鈕");
+  assert.ok(!epub.root.textContent.includes("要列印看診摘要卡"),
+    "EPUB 也不該顯示導流說明");
+
+  const inApp = await openTab(payload, "就醫", { inApp: true });
+  assert.ok(!buttonByText(inApp.root, "列印看診摘要卡"),
+    "App 內 window.print 不作用，不得擺一顆沒反應的按鈕");
+  assert.ok(inApp.root.textContent.includes("要列印看診摘要卡"),
+    "App 內應顯示導流說明");
 });

@@ -186,5 +186,5 @@ test("Windows 起始目錄不得產生混合分隔符的預設檔名", async (t)
   const save = calls.find(c => c.api === "save");
   assert.ok(!save.opts.defaultPath.includes("/"),
     `Windows 路徑混進了斜線：${save.opts.defaultPath}`);
-  assert.match(save.opts.defaultPath, /^C:\\Users\\me\\Documents\\dashboard_.*\.epub$/);
+  assert.match(save.opts.defaultPath, /^C:\\Users\\me\\Documents\\健康紀錄_.*\.epub$/);
 });

@@ -37,7 +37,9 @@ def assemble(payload_json, sizes):
 <body>
 <div id="app"><p>載入中…若一直停在這行，表示目前的開啟方式不會執行網頁程式
 （例如 iOS「檔案」App 的預覽視窗）。電腦上請用瀏覽器開啟本檔；iPhone、
-iPad 請改用「HTML &amp; Markdown 檢視器」這類會執行網頁程式的 App。</p></div>
+iPad 請改用「HTML &amp; Markdown 檢視器」這類會執行網頁程式的 App。<br>
+更省事的辦法：請傳這個檔案給你的人改寄 EPUB 版，用 iPhone、iPad 的
+「書籍」（Apple Books）打開就能直接看。</p></div>
 <script type="application/json" id="hwb-data">{payload_json}</script>
 <script>{vendor}</script>
 <script>{app_js}</script>

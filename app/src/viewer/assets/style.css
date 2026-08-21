@@ -110,6 +110,10 @@ header .disclaimer { font-size: .82em; color: var(--ink2); margin: 2px 0 0; }
 .go { margin-left: auto; color: var(--ink2); font-size: 1.2em; }
 header .disclaimer b { color: var(--warn); }
 
+/* 診間視角區塊的標頭：說明文字在左、列印鈕靠右（2026-08-21 走查） */
+.clinic-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.clinic-head .catbtn { margin-left: auto; }
+
 /* 手機（診間用手機看匯出的單檔 HTML）：收窄邊距、總覽卡片單欄、
    寬表格各自橫向捲動而非撐破整頁。App 內桌面檢視寬度 >600px 不會
    觸發，兩邊互不影響。觸控目標沿用基礎樣式的 44px，不在此縮小。 */
@@ -130,19 +134,23 @@ header .disclaimer b { color: var(--warn); }
    section 的直系子節點）。用 display:none 而非 visibility:hidden，才不會留下
    已排版但看不見的內容變成空白頁。 */
 .print-sheet { display: none; }
-/* 隱藏規則以 body:has(.print-sheet) 為護欄：只有清單在 DOM（＝用藥分頁）
-   時才接管列印；其他分頁按瀏覽器列印仍印一般頁面，不會印出空白。
+/* 隱藏規則以 body:has(.print-sheet.active) 為護欄：只有被觸發的那一份清單
+   （按鈕在呼叫 window.print() 前掛上 active）才接管列印；其他分頁按瀏覽器
+   列印仍印一般頁面，不會印出空白。
+   選擇器 MUST 帶 .active：檢視頁有兩份列印視圖（用藥清單與看診摘要卡），
+   只認 .print-sheet 的話兩份會同時進入列印輸出。
    不支援 :has 的舊瀏覽器整組不生效＝優雅降級成印一般頁面。 */
 @media print {
-  body:has(.print-sheet) { padding: 0; max-width: none; background: #fff; color: #000; }
-  body:has(.print-sheet) header { display: none !important; }
-  body:has(.print-sheet) section > *:not(.print-sheet) { display: none !important; }
-  .print-sheet { display: block; }
-  .print-sheet h2 { margin-top: 0; }
-  .print-sheet .note { color: #000; }
-  .print-sheet table { page-break-inside: auto; }
-  .print-sheet thead { display: table-header-group; }  /* 跨頁每頁重印表頭 */
-  .print-sheet h3 { page-break-after: avoid; }         /* 節標題不孤兒在頁尾 */
-  .print-sheet tr { page-break-inside: avoid; }
-  .print-sheet th, .print-sheet td { border-bottom: 0.5px solid #999; }
+  body:has(.print-sheet.active) { padding: 0; max-width: none; background: #fff; color: #000; }
+  body:has(.print-sheet.active) header { display: none !important; }
+  body:has(.print-sheet.active) section > *:not(.print-sheet.active) { display: none !important; }
+  .print-sheet.active { display: block; }
+  .print-sheet.active h2 { margin-top: 0; }
+  .print-sheet.active .note { color: #000; }
+  .print-sheet.active table { page-break-inside: auto; }
+  .print-sheet.active thead { display: table-header-group; }  /* 跨頁每頁重印表頭 */
+  .print-sheet.active h3 { page-break-after: avoid; }         /* 節標題不孤兒在頁尾 */
+  .print-sheet.active h4 { page-break-after: avoid; }
+  .print-sheet.active tr { page-break-inside: avoid; }
+  .print-sheet.active th, .print-sheet.active td { border-bottom: 0.5px solid #999; }
 }
