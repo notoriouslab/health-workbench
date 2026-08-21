@@ -25,8 +25,10 @@ const OUT_DIR = process.argv[2] || path.join(tmpdir(), "hwb-demo");
 const DRUG_CACHE = path.join(REPO, "app/src-tauri/resources/drug_items.sqlite");
 const LAB_ENTRIES = JSON.parse(
   readFileSync(path.join(REPO, "app/src/knowledge/labs.json"), "utf-8"));
-// 固定「今天」，讓產出可重現（畫面上的「資料截至」也跟著固定）
-const TODAY = "2026-08-12";
+// 固定「今天」，讓產出可重現（畫面上的「資料截至」也跟著固定）。
+// 截圖時用 HWB_DEMO_TODAY 對齊拍攝日：診間視角的「近 7 天」與剩餘天數
+// 都相對於當下計算，示範資料停在幾個月前的話那幾欄永遠是空的。
+const TODAY = process.env.HWB_DEMO_TODAY || "2026-08-12";
 
 let seed = 20260812;
 const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
@@ -184,8 +186,10 @@ await d.batchInsert("body_measurements",
 
 // ---------- Apple 健康（體重、血壓、步數）----------
 const appleRows = [];
-const A_START = new Date("2023-08-01T00:00:00Z");
 const A_DAYS = 1105;
+// 起點由 TODAY 回推，讓量測序列一路接到「今天」：起點寫死的話，覆寫
+// HWB_DEMO_TODAY 只會改到頁首的「資料截至」，近 7 天那一欄仍是空的
+const A_START = addDays(new Date(`${TODAY}T00:00:00Z`), -(A_DAYS - 1));
 let w = 74.8;
 for (let i = 0; i < A_DAYS; i++) {
   const day = addDays(A_START, i);
