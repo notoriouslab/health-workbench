@@ -15,6 +15,8 @@ import { defaultSavePath } from "./paths.js";
 import { createHistory } from "./history.js";
 import { createProfileManager } from "./profile_manager.js";
 import { localDateISO } from "../engine/values.js";
+import { decideCheck, shouldCheck, checkLatest, isDifferent, safeReleaseUrl, RELEASES_URL }
+  from "./update_check.js";
 
 const statusEl = document.getElementById("status");
 const noticeEl = document.getElementById("notice");
@@ -407,8 +409,9 @@ async function wireUi() {
   });
   // opener 插件到位後改直接開瀏覽器（2026-08-11 指示；剪貼簿方案退場），
   // 開啟失敗回退複製，確保任何情況都有路可走
-  // 開瀏覽器（app-shell「檢查新版入口」：App 本體零連網，連網只發生在
-  // 使用者主動開瀏覽器；不做自動版本檢查）
+  // 開瀏覽器（app-shell「檢查新版入口」）。App 唯一的對外請求是啟動時的
+  // 更新檢查，且需先取得同意（見下方更新檢查段），其餘連網一律是使用者
+  // 主動開瀏覽器。傳入的 url 若來自外部回應，呼叫端 MUST 先過白名單。
   const openExternal = async (url) => {
     try {
       await window.__TAURI__.opener.openUrl(url);
@@ -424,7 +427,7 @@ async function wireUi() {
   document.getElementById("gh-open-btn").addEventListener("click", () =>
     openExternal("https://github.com/notoriouslab/health-workbench"));
   document.getElementById("check-update-btn").addEventListener("click", () =>
-    openExternal("https://github.com/notoriouslab/health-workbench/releases"));
+    openExternal(RELEASES_URL));
 
   // 版本標示（2026-08-13 走查：安裝版與 dev 版共用同一個資料目錄，開錯版本
   // 會建出舊 schema 的庫而症狀像功能壞掉）。版號兩者相同，光看版號分不出來，
@@ -442,6 +445,71 @@ async function wireUi() {
     } catch { /* 取不到就不標來源 */ }
     const parts = [ver ? `v${ver}` : null, origin || null].filter(Boolean);
     el.textContent = parts.length ? `｜${parts.join("・")}` : "";
+
+    // 更新檢查（app-shell「更新檢查的徵詢」）：首次啟動徵詢一次，同意後才查。
+    // 沿用上面已取得的 ver 與 origin，不重算。
+    //
+    // 開發版與本機建置在此整段退出（連開關都不顯示、不註冊任何監聽器）：
+    // 發版流程先提升版本號再打 tag，此時本機版本會領先最新發布版，通知只會
+    // 叫人去下載較舊的版本，而顯示一個永遠不會作用的開關只是誤導。
+    if (!shouldCheck({ origin })) return;
+
+    const ask = document.getElementById("update-ask");
+    const note = document.getElementById("update-note");
+    const toggle = document.getElementById("update-toggle");
+    const goBtn = document.getElementById("update-go");
+    if (!ask || !note || !toggle || !goBtn) return;
+
+    // 「前往查看」與提示都用靜態元素：每次開關切換都動態插入按鈕會留下重複的
+    // 舊按鈕，而關掉檢查後還掛著提示是自相矛盾的畫面。
+    let latestUrl = null;
+    goBtn.addEventListener("click", () => openExternal(safeReleaseUrl(latestUrl)));
+
+    const run = async () => {
+      const latest = await checkLatest({});
+      if (!latest || !ver || !isDifferent(latest.tag, ver)) return;
+      latestUrl = latest.url;
+      note.textContent = `｜有新版 ${latest.tag}`;
+      goBtn.hidden = false;
+    };
+
+    // 徵詢只問一次，之後靠這個常駐開關改（spec 的「隨時可以關閉」條款）。
+    let on = false;
+    const showToggle = () => {
+      toggle.textContent = on ? "啟動時檢查新版：開" : "啟動時檢查新版：關";
+      toggle.hidden = false;
+    };
+    toggle.addEventListener("click", async () => {
+      on = !on;
+      await updateSettings({ updateCheck: on });
+      showToggle();
+      if (on) { await run(); return; }
+      note.textContent = "";
+      goBtn.hidden = true;
+    });
+
+    const cfg = await loadSettings(app.dbDir);
+    const decision = decideCheck({ origin, updateCheck: cfg.updateCheck });
+    if (decision !== "ask") {
+      on = decision === "check";
+      showToggle();
+      if (on) await run();
+      return;
+    }
+    ask.hidden = false;
+    document.getElementById("update-yes").addEventListener("click", async () => {
+      ask.hidden = true;
+      on = true;
+      await updateSettings({ updateCheck: true });
+      showToggle();
+      await run();
+    });
+    document.getElementById("update-no").addEventListener("click", async () => {
+      ask.hidden = true;
+      on = false;
+      await updateSettings({ updateCheck: false });
+      showToggle();
+    });
   })();
 
   // 原生拖放（Tauri drag-drop 事件；HTML5 drop 在 Tauri 內拿不到路徑）

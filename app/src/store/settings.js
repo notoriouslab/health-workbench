@@ -1,5 +1,6 @@
 // 當前成員狀態記憶（design D4；profile-management spec）。
-// settings.json 與資料庫同目錄，僅存數字 id（零個資）。
+// settings.json 與資料庫同目錄。存當前成員 id（數字）與更新檢查的徵詢結果
+// （updateCheck 布林；鍵不存在＝還沒問過）。不含健康或身分資料。
 // loadSettings＝純 JSON 解析零驗證；id 有效性驗證只在
 // resolveCurrentProfile（純函式），ui/main.js 於啟動與刪除成員後呼叫。
 // IO 注入（io 參數）讓 node:test 直測；App 端用預設 tauriIo。

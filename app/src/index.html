@@ -27,7 +27,7 @@
     <section id="tab-import" class="tab-panel" hidden>
       <section id="app-intro">
         <p class="intro-lead">把健保「健康存摺」下載檔與 Apple 健康匯出，整理成可累積、
-          可搜尋、可帶去回診討論的本機健康紀錄。<strong>所有資料只留在這台電腦上</strong>，
+          可搜尋、可帶去回診討論的本機健康紀錄。<strong>健康資料只留在這台電腦上</strong>，
           不需要帳號、不上傳雲端。可為每位家庭成員分別管理資料。</p>
         <ol class="intro-steps">
           <li>下載資料：健康存摺網站下載「醫療類」資料（建議 JSON，內容比 XML
@@ -42,7 +42,14 @@
           原始碼與說明：<code id="gh-url">github.com/notoriouslab/health-workbench</code>
           <button id="gh-open-btn" type="button" class="linklike">開啟↗</button>
           <span id="app-version" class="dt"></span>
-          <button id="check-update-btn" type="button" class="linklike">檢查新版↗</button></p>
+          <button id="check-update-btn" type="button" class="linklike">檢查新版↗</button>
+          <button id="update-toggle" type="button" class="linklike" hidden></button>
+          <span id="update-note" class="dt"></span>
+          <button id="update-go" type="button" class="linklike" hidden>前往查看↗</button></p>
+        <p id="update-ask" class="intro-foot" hidden>啟動時要不要看看有沒有新版本？
+          只會查最新的版本號，不會送出你的任何資料，之後隨時可以在上面那一行關掉。
+          <button id="update-yes" type="button" class="linklike">好</button>
+          <button id="update-no" type="button" class="linklike">不用</button></p>
       </section>
       <div id="dropzone" role="button" tabindex="0">
         <p class="dz-title">把檔案拖到這裡，或點擊選擇檔案</p>

@@ -227,3 +227,40 @@ test("epubIdentifier 穩定且隨成員與日期變動", () => {
   assert.notEqual(epubIdentifier("阿明", "2026-08-17"), epubIdentifier("阿明", "2026-08-18"));
   assert.equal(xmlEscape("<&>"), "&lt;&amp;&gt;");
 });
+
+// change update-check-optin T7：更新檢查只存在於殼層，匯出產物必須零殘留。
+// 這是驗收項而非假設（殼層與檢視層共用 assets 的話就會夾帶進去），
+// 且 EPUB 是壓縮檔，字串掃描 MUST 解壓後逐 entry 做，掃 bytes 掃不到。
+test("匯出產物不含更新檢查（單檔 HTML 與 EPUB 皆零殘留）", async () => {
+  const NEEDLES = ["api.github.com", "update_check", "update-toggle", "releases/latest"];
+  const payload = await realPayload();
+  const assets = readAssets();
+
+  const html = assemble(payload, assets);
+  for (const n of NEEDLES) {
+    assert.ok(!html.includes(n), `單檔 HTML 夾帶更新檢查痕跡：${n}`);
+  }
+
+  const epubPath = writeEpub(await assembleEpub(payload, assets), "nonet.epub");
+  const hits = JSON.parse(execFileSync("python3", ["-c", [
+    "import json, zipfile",
+    `z = zipfile.ZipFile(${JSON.stringify(epubPath)})`,
+    `needles = json.loads(${JSON.stringify(JSON.stringify(NEEDLES))})`,
+    "hits = {}",
+    "for name in z.namelist():",
+    "    text = z.read(name).decode('utf-8', 'ignore')",
+    "    for n in needles:",
+    "        if n in text: hits.setdefault(n, []).append(name)",
+    "print(json.dumps(hits))",
+  ].join("\n")], { cwd: REPO, encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 }));
+  assert.deepEqual(hits, {}, `EPUB 夾帶更新檢查痕跡：${JSON.stringify(hits)}`);
+
+  // 負向對照：掃描器真的看得見 EPUB 內容（否則上面的零可能只是掃不到）
+  const seen = JSON.parse(execFileSync("python3", ["-c", [
+    "import json, zipfile",
+    `z = zipfile.ZipFile(${JSON.stringify(epubPath)})`,
+    "print(json.dumps([n for n in z.namelist()",
+    "  if 'hwb-data' in z.read(n).decode('utf-8', 'ignore')]))",
+  ].join("\n")], { cwd: REPO, encoding: "utf-8" }));
+  assert.ok(seen.length >= 1, "掃描器讀不到 EPUB 內容，上面的零不成立");
+});
