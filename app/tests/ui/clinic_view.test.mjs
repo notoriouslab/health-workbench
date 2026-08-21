@@ -340,7 +340,9 @@ test("渲染：無 Apple 與 CPAP 資料時，居家量測小節整段不出現"
   const block = blockOf(root);
   assert.ok(block, "其他小節有資料，區塊仍應渲染");
   const text = block.textContent;
-  assert.ok(!text.includes("血壓、體重量得怎麼樣"), "居家量測小節應整段不輸出");
+  // 用 h3 判定而非整段文字：底部導引「補上居家量測會更有用」也含這四個字
+  assert.ok(!findAll(block, (el) => el.localName === "h3"
+    && el.textContent === "居家量測").length, "居家量測小節應整段不輸出");
   assert.ok(!text.includes("天有量測"), "不該留下空的窗格欄");
   assert.ok(text.includes("現用藥甲錠"), "用藥小節仍應存在");
 });
@@ -416,7 +418,7 @@ test("渲染：區塊無大標、用藥小節標為近日用藥、摘要卡鈕�
 
   const summary = findAll(block, (el) => el.localName === "summary")[0];
   assert.ok(summary, "檢驗小節應是可折疊區（缺 summary）");
-  assert.ok(summary.textContent.includes("最近抽血驗了什麼？"), "缺小節標題");
+  assert.ok(summary.textContent.includes("最近一次抽血"), "缺小節標題");
   assert.match(summary.textContent, /\d+ 項/,
     `摘要行應標示項目數：${summary.textContent}`);
 

@@ -746,7 +746,7 @@
     // 同一件事的按鈕長得不一樣，使用者要多花一次判斷。
     return html`<div class="card clinic-view">
       <div class="clinic-head">
-        <span class="note">資料截止 ${fresh.date || "—"}${fresh.stale
+        <span class="note">就醫資料截止 ${fresh.date || "—"}${fresh.stale
           ? "｜這份資料有一段時間沒更新了，更近期的就醫與檢驗不在裡面" : ""}</span>
         ${!window.HWB_EPUB && !window.frameElement && html`<button class="catbtn"
           onClick=${onPrint}>列印看診摘要卡</button>`}
@@ -769,12 +769,12 @@
       </div>`}
 
       ${measureRows.length > 0 && html`<div>
-        <h3>血壓、體重量得怎麼樣？</h3>
+        <h3>居家量測</h3>
         <${MeasureTable} rows=${measureRows} />
       </div>`}
 
       ${lastLabs.length > 0 && html`<details open=${lastLabs.length <= LAB_OPEN_MAX}>
-        <summary><b>最近抽血驗了什麼？</b>
+        <summary><b>最近一次抽血</b>${" "}
           <span class="note">${lastLabDate}｜${lastLabs.length} 項</span></summary>
         <table>
           <thead><tr><th>項目</th><th>結果</th><th>參考值</th></tr></thead>
@@ -816,7 +816,7 @@
     return html`<div class=${sheetClass} id="print-clinic">
       <h2>看診摘要卡</h2>
       <p class="note">成員：${DATA.meta.profile}｜產生日期：${DATA.meta.generated_at}
-        ｜資料截止 ${fresh.date || "—"}</p>
+        ｜就醫資料截止 ${fresh.date || "—"}</p>
       ${fresh.stale && html`<p class="note">
         這份資料有一段時間沒更新了，更近期的就醫與檢驗不在裡面</p>`}
       ${activeMeds.length > 0 && html`<div>
@@ -1033,7 +1033,7 @@
     return html`<div class=${sheetClass || "print-sheet"} id="print-meds">
       <h2>用藥清單</h2>
       <p class="note">成員：${DATA.meta.profile}｜產生日期：${DATA.meta.generated_at}</p>
-      <p class="note">資料截止 ${fresh.date || "—"}</p>
+      <p class="note">就醫資料截止 ${fresh.date || "—"}</p>
       <p class="note">藥品資訊來自健保用藥品項檔（版本 ${ver}）</p>
       ${secs.map(([label, gs]) => { const { cur, past } = splitByStatus(gs, now);
         return html`<div>
