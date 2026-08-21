@@ -249,21 +249,167 @@ code:
 ### Requirement: 檢查新版入口
 
 App MUST 於版號旁提供「檢查新版」入口，點擊以系統瀏覽器開啟本專案的
-GitHub releases 頁。App 本體 MUST NOT 為此發出任何網路請求，MUST NOT
-自動檢查版本（連網只發生在使用者主動開瀏覽器，與既有「開啟↗」同一
-信任模型）。開啟失敗時沿用既有 fallback（複製連結並提示手動前往）。
+GitHub releases 頁。開啟失敗時沿用既有 fallback（複製連結並提示手動前往）。
+
+先前版本要求「App 本體 MUST NOT 為此發出任何網路請求，MUST NOT 自動檢查
+版本」。該限制已放寬：App MAY 在**取得使用者明示同意後**自動查詢最新版本號，
+其約束由後續三條 Requirement 規範（徵詢、請求最小化、節制與靜默失敗）。
+放寬的理由與界線：「不連網」承諾的正確範圍是使用者的健康資料不離開本機，
+不含一個不攜帶任何使用者資料的版本號查詢；而僅靠使用者主動點擊的入口，
+無法觸及不會自行回到專案頁的使用者。
+
+未取得同意時，行為 MUST 與先前版本完全一致：App 本體 MUST NOT 為版本檢查
+發出任何網路請求。
 
 #### Scenario: 使用者主動檢查
 - **WHEN** 使用者點擊「檢查新版」
-- **THEN** 系統瀏覽器開啟 releases 頁；App 程序自身無任何網路連線
+- **THEN** 系統瀏覽器開啟 releases 頁
 
-#### Scenario: 不自動連網
-- **WHEN** App 啟動並閒置
+#### Scenario: 未同意時維持零連網
+- **WHEN** 徵詢結果為未定或拒絕，App 啟動並閒置
 - **THEN** 無任何對外請求（含版本檢查類）
 
 <!-- @trace
-source: display-revamp-bands-cleanup
-updated: 2026-08-19
+source: update-check-optin
+updated: 2026-08-21
 code:
   - docs/verification/display_revamp.md
+  - docs/verification/update_check_optin.md
+-->
+
+---
+### Requirement: 更新檢查的徵詢
+
+App SHALL 於首次啟動時徵詢一次是否啟用更新檢查。徵詢文字 MUST 說明三件事：
+只查詢最新版本號、不送出任何使用者資料、隨時可以關閉。
+
+徵詢結果為三態：未定、同意、拒絕。**狀態為未定或拒絕時，App MUST NOT 發出
+任何版本查詢請求**。使用者做出選擇後 MUST NOT 再次徵詢，但 SHALL 提供一個
+常駐入口讓設定隨時可變更，且該入口 MUST 顯示當前狀態。
+
+徵詢狀態 SHALL 存於既有設定檔（與資料庫同目錄）。該檔先前僅存數字 id，
+本變更後另存一個布林；其檔頭說明 MUST 同步更新。MUST NOT 記錄上次檢查
+時間：那等於記錄「使用者曾於該日開啟 App」，而它唯一的用途（頻率節流）
+已刪除（design D5）。
+
+#### Scenario: 首次啟動徵詢
+- **WHEN** 設定檔無徵詢紀錄且 App 啟動
+- **THEN** 出現徵詢，且在使用者選擇之前無任何對外請求
+
+#### Scenario: 選擇後不再詢問
+- **WHEN** 使用者已做出選擇並重新啟動 App
+- **THEN** 不再出現徵詢
+
+#### Scenario: 拒絕後零請求
+- **WHEN** 徵詢結果為拒絕
+- **THEN** 啟動與閒置期間皆無版本查詢請求
+
+#### Scenario: 選擇後仍可隨時變更
+- **WHEN** 使用者已做出選擇，App 啟動且執行來源為正式安裝版
+- **THEN** 版號那一行出現顯示當前狀態的開關，按一下即切換並立即生效
+  （由關轉開時當次啟動即檢查一次，由開轉關時清掉既有的新版提示）
+
+<!-- @trace
+source: update-check-optin
+updated: 2026-08-21
+code:
+  - docs/verification/update_check_optin.md
+-->
+
+---
+### Requirement: 版本查詢的請求最小化
+
+查詢 SHALL 僅取得最新發布版本號。請求 MUST NOT 攜帶當前版本、識別碼、
+機器資訊或任何使用統計，版本比對 MUST 在本機進行。
+
+理由：把當前版本送出可讓對方統計版本分布，那是實質的隱私退讓，而本機比對
+不需要它。
+
+發布版本號帶前綴（如 `v0.8.0`）而 App 版本不帶（如 `0.8.0`），比對前
+MUST 去除前綴。比對 SHALL 只判斷兩者**是否不同**，MUST NOT 判斷新舊：
+正式安裝版的版本必然不晚於最新發布版，因此「不同」即「有新版」。
+MUST NOT 以字串大小比較（`0.10.0` 會被判為小於 `0.9.0`）。
+
+開發版與本機建置 MUST NOT 執行更新檢查。理由：發版流程先提升版本號再打
+tag，故在提升之後、發布之前，開發版的版本必然不同於最新發布版且更新，
+若對其執行檢查會通知開發者去下載較舊的版本。執行來源的判定沿用既有機制。
+
+查詢 MUST 只在已發布版本上判斷，MUST NOT 因未發布的草稿而通知使用者。
+
+所有失敗（離線、HTTP 非 200、回應形狀不符）MUST 靜默處理：MUST NOT 顯示
+錯誤訊息、MUST NOT 重試。更新檢查是附帶便利，為它產生的錯誤訊息是純干擾。
+
+#### Scenario: 本機比對
+- **WHEN** 執行版本查詢
+- **THEN** 請求不含當前版本或任何識別資訊，是否不同由本機判定
+
+#### Scenario: 跨十位數的版本
+- **WHEN** 當前版本為 0.9.0、最新發布為 v0.10.0
+- **THEN** 判定為有新版（不因字串大小比較而漏判）
+
+#### Scenario: 版本相同
+- **WHEN** 當前版本為 0.8.0、最新發布為 v0.8.0
+- **THEN** 判定為無新版，不顯示提示
+
+#### Scenario: 開發版不檢查
+- **WHEN** 執行來源為開發版或本機建置
+- **THEN** 不發出任何版本查詢請求
+
+#### Scenario: 草稿不觸發通知
+- **WHEN** 最新的發布項目仍為草稿狀態
+- **THEN** 使用者不會被通知該版本
+
+<!-- @trace
+source: update-check-optin
+updated: 2026-08-21
+code:
+  - docs/verification/update_check_optin.md
+-->
+
+---
+### Requirement: 只通知不下載
+
+偵測到較新版本時，App SHALL 於版號旁顯示一行提示與前往查看的入口，
+點擊以系統瀏覽器開啟。App MUST NOT 自行下載、MUST NOT 自行安裝任何檔案，
+MUST NOT 以彈出視窗打斷使用者當前操作。
+
+匯出的單檔 HTML 與 EPUB MUST NOT 帶有更新檢查行為（實作位於殼層，匯出產物
+天然不含；此條為驗收依據而非假設）。
+
+#### Scenario: 有新版時的提示
+- **WHEN** 查詢結果較新
+- **THEN** 版號旁出現一行提示與前往查看入口，無彈窗、無下載
+
+#### Scenario: 匯出檔不含此行為
+- **WHEN** 開啟匯出的單檔 HTML 或 EPUB
+- **THEN** 無任何版本查詢請求、無更新提示
+
+<!-- @trace
+source: update-check-optin
+updated: 2026-08-21
+code:
+  - docs/verification/update_check_optin.md
+-->
+
+---
+### Requirement: 隱私敘述與實際行為一致
+
+使用者可見的隱私敘述（README、App 介面、專案下載頁）MUST 準確反映實際
+網路行為。MUST NOT 使用會被單次連外行為推翻的絕對措辭（如無條件的
+「不連網」「不追蹤」）。
+
+敘述 SHALL 分述兩件事：使用者的健康資料不離開本機；更新檢查只查詢版本號、
+不送出任何使用者資料、可以關閉。
+
+檢視層的列印相關敘述不在此範圍（列印行為確實不連網）。
+
+#### Scenario: 敘述可驗證
+- **WHEN** 讀者比對隱私敘述與實際網路行為
+- **THEN** 兩者一致，無需靠註腳解釋例外
+
+<!-- @trace
+source: update-check-optin
+updated: 2026-08-21
+code:
+  - docs/verification/update_check_optin.md
 -->
