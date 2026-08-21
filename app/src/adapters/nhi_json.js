@@ -33,6 +33,51 @@ function isNoData(rows, sec) {
 
 export const stripBom = (s) => s.charCodeAt(0) === 0xFEFF ? s.slice(1) : s;
 
+// 健保署匯出的報告類自由文字欄位（如 r8.10 影像／病理報告）會塞入未跳脫的原始
+// 控制字元，例如聽力檢查用 TAB 對齊左右耳結果。這違反 RFC 8259，但確實是官方
+// 匯出工具的真實輸出，JSON.parse 會讓整批匯入在解析階段就中止，連逐筆 guard()
+// 防線都來不及發揮。Python 版用 json.loads(strict=False) 容忍；JS 沒有對應開關，
+// 因此自行跳脫字串內的原始控制字元。值刻意保留原字元不做替換：報告以等寬
+// pre-wrap 呈現，TAB 的對齊有意義。兩實作等價性由 tests/parity/ 釘住。
+const CTRL_ESCAPES = { 8: "\\b", 9: "\\t", 10: "\\n", 12: "\\f", 13: "\\r" };
+const escapeCtrl = (code) =>
+  CTRL_ESCAPES[code] ?? "\\u" + code.toString(16).padStart(4, "0");
+
+// 只跳脫「字串內」的原始控制字元，故必須追蹤 in-string 與反斜線跳脫狀態。
+// NEVER 簡化成全域 replace：健保署檔案是格式化多行 JSON，全域替換會把結構
+// 縮排的 TAB 與換行一起跳脫，JSON 從第一個字元就壞掉（tests 有負向對照）。
+export function escapeRawCtrlInStrings(text) {
+  let out = "", inStr = false, esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i], code = text.charCodeAt(i);
+    if (esc) { out += ch; esc = false; continue; }
+    if (inStr) {
+      if (ch === "\\") { out += ch; esc = true; continue; }
+      if (ch === '"') { inStr = false; out += ch; continue; }
+      if (code < 0x20) { out += escapeCtrl(code); continue; }
+      out += ch; continue;
+    }
+    if (ch === '"') inStr = true;
+    out += ch;
+  }
+  return out;
+}
+
+// 先照規格解析；失敗才付出一次 O(n) 掃描的代價重試（正常檔案零成本）。
+// 刻意不比對錯誤訊息文字來判斷是否為控制字元問題：那是引擎措辭，不同 V8
+// 版本會變，一變就靜默退回原本的整批中止。重試仍失敗則拋原始錯誤（貼近真因）。
+export function parseJsonTolerant(text) {
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    try {
+      return JSON.parse(escapeRawCtrlInStrings(text));
+    } catch {
+      throw err;
+    }
+  }
+}
+
 export const nhiJsonAdapter = {
   id: "nhi_json",
   formatDesc: "健保存摺醫療類 JSON（健康存摺醫療類_*.json）",
@@ -48,7 +93,8 @@ export const nhiJsonAdapter = {
 
   // source: { bytes: Uint8Array, name: string }
   async importSource(source, driver, progress, opts = {}) {
-    const data = JSON.parse(stripBom(new TextDecoder("utf-8").decode(source.bytes)));
+    const data = parseJsonTolerant(
+      stripBom(new TextDecoder("utf-8").decode(source.bytes)));
     const bdata = Object.fromEntries(
       Object.entries(data.myhealthbank.bdata).map(([k, v]) => [k.toLowerCase(), v]));
     return importNhiBdata(bdata, {

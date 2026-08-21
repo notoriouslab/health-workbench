@@ -8,6 +8,7 @@ from src.adapters.nhi_json import NhiJsonAdapter
 from src.store.db import Store
 
 FIXTURE = Path(__file__).parent / "fixtures" / "nhi_sample.json"
+CTRL_FIXTURE = Path(__file__).parent / "fixtures" / "nhi_ctrlchar.json"
 
 
 @pytest.fixture
@@ -143,3 +144,34 @@ def test_partial_failure_continues(tmp_path):
     assert s.con.execute("SELECT COUNT(*) FROM encounters").fetchone()[0] == 5  # 其他節區不受影響
     stats = s.con.execute("SELECT import_stats FROM source_documents").fetchone()[0]
     s.close()
+
+
+def test_raw_control_chars_in_report_field(tmp_path):
+    r"""報告欄位含未跳脫的原始控制字元時仍完整匯入（issue #2）。
+
+    官方匯出工具會在 r8.10 塞入原始 TAB（例如聽力檢查用 TAB 對齊左右耳），
+    違反 RFC 8259 但確實是真實輸出。strict=True 會讓整批匯入在解析階段就
+    中止、資料庫零寫入，連逐筆 guard() 防線都來不及發揮。
+
+    fixture 必須是位元層面的真 0x09：JSON 跳脫寫法 "\t" 是合法 JSON，
+    strict=True 也解析得過，用它當測試向量測不到這條 code path。
+    """
+    raw = CTRL_FIXTURE.read_bytes()
+    # 錨定 fixture 效力：它必須仍能觸發原本的錯誤，否則這則測試是假綠
+    assert raw.count(b"\x09") > 0
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(raw.decode("utf-8-sig"))
+
+    db = tmp_path / "ctrl.sqlite"
+    rc = NhiJsonAdapter().import_file(CTRL_FIXTURE, db_path=db, assume_profile=True)
+    assert rc == 0
+    s = Store(db)
+    row = s.con.execute(
+        "SELECT report_text, length(report_text) AS n FROM reports").fetchone()
+    counts = s.table_counts()
+    s.close()
+    # 值原樣保留、不替換成空白：報告以等寬 pre-wrap 呈現，TAB 的對齊有意義
+    assert row["report_text"] == "pure tone audiometry\tR\tWNL\tL\tWNL"
+    # TAB 不影響 SQL 字串函式（NUL 會，見 known limitation）
+    assert row["n"] == len(row["report_text"])
+    assert counts["reports"] == 1

@@ -74,7 +74,13 @@ class NhiJsonAdapter:
     def import_file(self, path, *, db_path, assume_profile=False):
         raw = path.read_bytes()
         sha256 = hashlib.sha256(raw).hexdigest()
-        data = json.loads(raw.decode("utf-8-sig"))
+        # 健保署匯出的報告類自由文字欄位（如 r8.10 影像／病理報告）會塞入未跳脫
+        # 的原始控制字元，例如聽力檢查用 TAB 對齊左右耳結果。這違反 RFC 8259，
+        # 但確實是官方匯出工具的真實輸出；strict=True 會在此整批中止，連逐筆
+        # guard() 防線都來不及發揮。值刻意保留原字元不做替換：報告以等寬 pre-wrap
+        # 呈現，TAB 的對齊有意義。JS 版 JSON.parse 無對應開關，以 parseJsonTolerant
+        # 達成同語意，兩實作等價性由 app/tests/parity/ 釘住。
+        data = json.loads(raw.decode("utf-8-sig"), strict=False)
         bdata = {k.lower(): v for k, v in data["myhealthbank"]["bdata"].items()}
         masked_id = (bdata.get("b1.1") or "").strip()
 

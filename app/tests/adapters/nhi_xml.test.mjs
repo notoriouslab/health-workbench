@@ -157,3 +157,17 @@ test("內容判型：XML 檔被 nhi_xml 識別，與 JSON/Apple 不混淆", () =
   const jsonHead = new TextEncoder().encode('{"myhealthbank": {"bdata": {');
   assert.equal(reg.detect(jsonHead, "x.json"), nhiJsonAdapter);
 });
+
+// issue #2 的對照面：JSON 版會在解析階段整批中止，XML 版不會。原因是這裡是自寫
+// 的迷你解析器（indexOf ＋ regex），不做 XML 合法字元檢查；而 TAB 在 XML 文字
+// 節點本來就合法。這則測試釘住現況，因為真正的風險是將來有人把它換成標準
+// DOMParser：那時 NUL 這類 XML 1.0 非法字元會開始丟錯，而在此之前沒有任何
+// 測試會轉紅。JSON 側的對應測試在 tests/adapters/edge_cases.test.mjs。
+test("XML 文字節點含原始控制字元：不中止且值原樣通過（issue #2 對照）", () => {
+  const T = String.fromCharCode(9), N = String.fromCharCode(0);
+  const dirty = `pure tone audiometry${T}R${T}WNL${T}L${T}WNL${N}end`;
+  const xml = "﻿<?xml version=\"1.0\" encoding=\"utf-8\"?>"
+    + `<myhealthbank><bdata><r8><r8.10>${dirty}</r8.10></r8></bdata></myhealthbank>`;
+  const bdata = xmlToBdata(xml);
+  assert.equal(bdata.r8[0]["r8.10"], dirty);
+});

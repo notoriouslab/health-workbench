@@ -111,3 +111,55 @@ code:
   - docs/verification/karen_reality.md
   - README.md
 -->
+
+---
+### Requirement: 報告欄位非規格控制字元容忍
+健保署匯出工具會在報告類自由文字欄位（如 r8.10 影像／病理報告）寫入未跳脫的
+原始控制字元，例如聽力檢查以 TAB 對齊左右耳結果。此輸出違反 RFC 8259（字串內
+控制字元須跳脫），但確實是官方工具的真實輸出，系統 SHALL 完成匯入，
+MUST NOT 在解析階段整批中止（中止會讓逐筆 guard() 防線完全來不及發揮，
+資料庫零寫入）。
+
+解析出的值 MUST 原樣保留該控制字元，MUST NOT 替換為空白：報告以等寬
+pre-wrap 呈現，TAB 的對齊帶有原始語意。
+
+兩實作的容忍手段不對稱（Python 用 `json.loads(strict=False)`；JS 無對應開關，
+於 `JSON.parse` 失敗後跳脫字串內控制字元重試一次），語意等價性 MUST 由差分
+測試釘住，MUST NOT 僅以人工對帳宣稱。跳脫 MUST 限定於字串內：健保署檔案為
+格式化多行 JSON，全域替換會連結構縮排一起跳脫而破壞整份文件。
+
+回歸素材 MUST 是位元層面的原始控制字元。JSON 跳脫寫法是合法 JSON，
+`strict=True` 也解析得過，用它當測試向量測不到這條路徑。
+
+#### Scenario: 報告欄位含未跳脫原始 TAB
+- **WHEN** 匯入一份 r8.10 值含位元層面原始 0x09 的下載檔
+- **THEN** 匯入完成回報成功，報告列入庫，且 report_text 與原始值逐字元相同
+
+#### Scenario: 兩實作差分等價
+- **WHEN** 同一含原始控制字元的檔案分別經 Python adapter 與 App 引擎匯入
+- **THEN** 全表 dump 與增量品質報告全等
+
+#### Scenario: XML 格式同素材不中止
+- **WHEN** 同類控制字元出現在 XML 版的文字節點
+- **THEN** 迷你解析器原樣通過、不中止（TAB 於 XML 文字節點本即合法）
+
+**已知限制**：值原樣入庫對 TAB 與 0x1f 等字元無下游影響（EPUB 與單檔 HTML
+的健康資料走 JSON.stringify 嵌入，控制字元被跳脫為 ASCII 序列，產出經標準
+XML 解析器判定為有效；SQL 字串函式行為正常）。NUL（0x00）另有兩項後果尚未
+處理：SQLite 的 length()／substr()／LIKE 在 NUL 處截斷，且 Python sqlite3
+與 node:sqlite 的值往返一致性不同（前者無損、後者有損）。健保署檔案至今未
+觀測到 NUL，故解析層一律容忍但不納入回歸基準。另 EPUB metadata 路徑的
+xmlEscape 不處理控制字元，該路徑只取用成員名稱與日期，不取用下載檔內容。
+
+<!-- @trace
+source: issue-2-raw-control-chars
+updated: 2026-08-21
+code:
+  - src/adapters/nhi_json.py
+  - app/src/adapters/nhi_json.js
+  - tests/fixtures/nhi_ctrlchar.json
+  - tests/test_nhi.py
+  - app/tests/adapters/edge_cases.test.mjs
+  - app/tests/adapters/nhi_xml.test.mjs
+  - app/tests/parity/parity.test.mjs
+-->
