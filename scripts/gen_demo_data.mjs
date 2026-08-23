@@ -85,9 +85,9 @@ const GROUPS = {
           ["J069", "急性上呼吸道感染"], ["K21", "胃食道逆流"], ["E785", "高血脂症"]] },
   tcm: { type: "tcm", section: "r9", facs: ["示範中醫診所"],
     dxs: [["M542", "頸部疼痛"], ["M79604", "肩部疼痛"]] },
-  dental: { type: "dental", section: "r6", facs: ["示範牙醫診所"],
+  dental: { type: "dental", section: "r3", facs: ["示範牙醫診所"],
     dxs: [["K053", "慢性牙周炎"], ["K021", "齒質齒齦炎"]] },
-  pharmacy: { type: "pharmacy_dispensing", section: "r3", facs: ["示範藥局"],
+  pharmacy: { type: "pharmacy_dispensing", section: "r1", facs: ["示範藥局"],
     dxs: [["I10", "原發性高血壓"]] },
 };
 
@@ -165,7 +165,7 @@ let labIdx = 0;
 for (const [norm, raw, base, amp, ref, unit, drift] of LABS) {
   labDates.forEach((dt, i) => {
     const v = r1(base + drift * i + (rnd() - 0.5) * 2 * amp);
-    labRows.push([pid, docs.nhi, "r4", ++labIdx, `fp-lab-${norm}-${i}`,
+    labRows.push([pid, docs.nhi, "r7", ++labIdx, `fp-lab-${norm}-${i}`,
       JSON.stringify({ demo: true }), dt, dt, "示範綜合醫院", `L${9000 + labIdx}`,
       "生化檢驗", raw, norm, `${v} ${unit}`, v, ref, ""]);
   });
@@ -180,9 +180,9 @@ await d.batchInsert("lab_results",
 await d.batchInsert("body_measurements",
   ["profile_id", "doc_id", "section", "source_index", "record_fp", "canonical",
     "check_date", "height_cm", "weight_kg", "bmi", "waist", "systolic", "diastolic"],
-  [[pid, docs.nhi, "r7", 1, "fp-bm-1", "{}", "2024-03-06", 170.2, 73.5, 25.4, 88, 138, 88],
-   [pid, docs.nhi, "r7", 2, "fp-bm-2", "{}", "2025-04-18", 170.0, 72.1, 24.9, 86, 132, 84],
-   [pid, docs.nhi, "r7", 3, "fp-bm-3", "{}", "2026-05-09", 170.1, 71.0, 24.5, 85, 128, 82]]);
+  [[pid, docs.nhi, "r10", 1, "fp-bm-1", "{}", "2024-03-06", 170.2, 73.5, 25.4, 88, 138, 88],
+   [pid, docs.nhi, "r10", 2, "fp-bm-2", "{}", "2025-04-18", 170.0, 72.1, 24.9, 86, 132, 84],
+   [pid, docs.nhi, "r10", 3, "fp-bm-3", "{}", "2026-05-09", 170.1, 71.0, 24.5, 85, 128, 82]]);
 
 // ---------- Apple 健康（體重、血壓、步數）----------
 const appleRows = [];
