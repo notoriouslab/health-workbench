@@ -319,6 +319,25 @@ App 資料目錄一律不進版本控制，測試只用合成樣本）。
 
 ---
 
+## 第三方唯讀整合
+
+App 的 SQLite 資料庫可供外部工具以唯讀方式（`mode=ro`）查詢。
+給整合方的三個契約：
+
+- **schema 穩定性**：任何 schema 變更（含只新增欄位）都會遞增
+  `schema_version` 表的版本號，且只提供前向遷移。破壞性變更（欄位
+  改名、刪除、語意改變）在 1.0 之後走 major 版號；1.0 之前會在
+  CHANGELOG 醒目標註。建議整合方鎖定 `schema_version`，版本不符時
+  拒絕作答，而不是猜欄位繼續跑。
+- **分類請用 `type` 欄**：`encounters.section` 是健保存摺的原始
+  區段代碼（r1 西醫門診、r3 牙醫門診等，定義見
+  `app/src/adapters/nhi_fieldmap.js`），同一區段可能含多種就醫
+  類型（例如藥局調劑就落在 r1 之下）；`type` 才是正規化後的分類，
+  App 畫面與統計一律以 `type` 為準。
+- **合成資料不是規格**：`scripts/gen_demo_data.mjs` 產出的示範
+  資料只用於展示與截圖，可拿來驗流程，但欄位語意請以
+  `openspec/specs/` 的規格為準，不要照合成資料反推。
+
 ## 開發者資訊
 
 - **App**：Tauri 2（Rust 殼只做 SQLite 橋與插件，業務邏輯全在
@@ -327,7 +346,7 @@ App 資料目錄一律不進版本控制，測試只用合成樣本）。
   凍結新功能，作為 App 匯入引擎的差分驗收基準。常用：
   `bin/hwb import <檔案>`、`bin/hwb rebuild`、`bin/hwb status`、
   `bin/hwb knowledge update`（更新藥品品項快取，唯一主動連網的命令）。
-- **測試**：`cd app && npm test`（377 項，含與 Python 的逐位元組
+- **測試**：`cd app && npm test`（432 項，含與 Python 的逐位元組
   差分對帳、匯入與救援操作的非破壞性紅隊矩陣、檢視器全分頁渲染守衛）；
   `python3 -m pytest tests/`；端到端 `scripts/e2e_idempotency.sh`。
 - **CI**：`.github/workflows/app-build.yml`（測試＋守衛 → 雙平台建置）；
