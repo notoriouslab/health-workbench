@@ -15,22 +15,48 @@ normalized_name、aliases、description、source_name、source_url、
 cited_date。缺任一欄位 MUST 使建置失敗。dashboard 顯示說明時
 SHALL 同時顯示來源名稱與引用日期。
 
+條目 SHALL 可附可選欄位 order_codes（字串清單）；每個元素 MUST 符合
+健保醫令代碼 6 碼格式（5 位數字加 1 位大寫英文字母，如 `09044C`）。
+同一代碼 MUST NOT 出現於兩個條目；正規名與別名經鬆化函式後
+MUST NOT 跨條目同鍵。違反任一 MUST 使建置失敗並指出條目名。
+order_codes 僅 SHALL 宣告於醫令定義為單一分析物、且無已知資料顯示
+他項附帶回報之醫令；多分析物醫令（如全套血液檢查）MUST NOT 宣告。
+
 #### Scenario: 完整條目顯示
 - **WHEN** 檢視 Hemoglobin 檢驗說明
-- **THEN** 顯示說明文字、來源（如國健署成人預防保健專區）與引用日期
+- **THEN** 顯示說明文字、來源（如衛福部 TW Core 醫療服務給付項目
+  CodeSystem）與引用日期
 
 #### Scenario: 缺來源欄位
 - **WHEN** labs.yaml 有條目缺 source_url
 - **THEN** 建置失敗並指出條目名
 
+#### Scenario: 代碼重複宣告
+- **WHEN** labs.yaml 有兩個條目的 order_codes 皆含 `09044C`
+- **THEN** 建置失敗並指出兩個條目名
+
+#### Scenario: 代碼格式錯誤
+- **WHEN** 某條目 order_codes 含 `09044c00`
+- **THEN** 建置失敗並指出條目名與該代碼
+
+#### Scenario: 鬆化後跨條目同鍵
+- **WHEN** 條目 A 的別名 `CA 199` 與條目 B 的正規名 `CA-199` 鬆化後
+  同為 `CA199`
+- **THEN** 建置失敗並指出 A 與 B
+
 
 <!-- @trace
-source: mvp-core-dashboard
-updated: 2026-08-09
+source: lab-order-code-normalization
+updated: 2026-09-19
 code:
   - bin/hwb
   - docs/verification/karen_reality.md
   - README.md
+  - src/knowledge/labs.py
+  - src/knowledge/labs.yaml
+  - app/scripts/build_labs_json.py
+  - app/tests/knowledge/labs_json_fresh.test.mjs
+  - docs/verification/lab_order_code_normalization.md
 -->
 
 ---

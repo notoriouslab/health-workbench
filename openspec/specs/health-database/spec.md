@@ -96,6 +96,24 @@ lab_results SHALL 同時保存 test_name_raw 與 test_name_normalized；
 （如 eGFR (CKD-EPI) 與 eGFR (MDRD)）MUST 維持獨立正規化名，
 MUST NOT 合併為同一趨勢線。
 
+比對 SHALL 依序三級短路：(1) 名稱比對——先以精確鍵（Unicode NFKC、
+去頭尾空白、轉大寫）比對別名表；不中時以鬆化鍵（NFKC、轉大寫、移除
+空白與 `- _ . / , 、 ( )`）比對，但鬆化鍵長度不足 3 者 MUST NOT 進入
+鬆化比對（短別名如 Na、K、UA 只允許精確命中）；(2) 醫令代碼後備——名稱不中時，該列 order_code 去
+空白、轉大寫、取前 6 碼，若恰為一個 knowledge 條目於 order_codes
+宣告之代碼即命中該條目，並標 quality flag `mapped_by_code`；
+(3) 皆不中 → NULL 並標 unmapped。名稱命中 MUST 永遠優先於代碼；
+原始名為空或鬆化後為空字串時名稱級 MUST 視為不中；order_code 為空
+或不足 6 碼時 MUST 跳過代碼後備。`unmapped` 與
+`mapped_by_code` MUST 互斥，重算時 MUST 先移除兩者再依結果加回，
+其他既有旗標 MUST 原樣保留。
+
+重算 SHALL 為冪等且只寫入結果有變動的列：系統 MUST 於 NHI 匯入完成
+時、App 任一開庫路徑（啟動、匯入既有資料庫檔）完成遷移後、以及 CLI
+`hwb knowledge normalize` 執行時
+重算全部 lab_results；對同一資料重複執行，第二次 MUST 零列變動。
+App 啟動重算失敗 MUST NOT 阻擋啟動。
+
 #### Scenario: Hb 與 HB 合併
 - **WHEN** 兩院所分別回報 Hb 與 HB
 - **THEN** 兩者 normalized 同為 Hemoglobin，趨勢圖同一條線
@@ -104,14 +122,68 @@ MUST NOT 合併為同一趨勢線。
 - **WHEN** 資料含 eGFR (CKD-EPI) 與 eGFR (MDRD)
 - **THEN** 兩者為不同正規化名、各自成線
 
+#### Scenario: 鬆比對吸收標點與大小寫差異
+- **WHEN** 一筆檢驗原始名為 `l.d.l. cholesterol `（小寫、句點、尾空白）
+  且別名表含 `L.D.L. cholesterol` 或 `LDL-Cholesterol`
+- **THEN** normalized 為 LDL-C，quality_flags 不含 unmapped 亦不含
+  mapped_by_code
+
+#### Scenario: 短鍵不鬆化
+- **WHEN** 一筆檢驗原始名為 `N/A`、`U/A` 或 `n.a.` 且無 order_code
+- **THEN** normalized 為 NULL 並標 unmapped，MUST NOT 因鬆化成 `NA`／`UA`
+  而對到 Sodium 或 Uric Acid
+
+##### Example: 短別名精確命中仍有效
+- **GIVEN** Sodium 條目別名含 `Na`
+- **WHEN** 原始名為 `Na` 或 ` na `
+- **THEN** normalized 為 Sodium，quality_flags 不含 mapped_by_code
+
+#### Scenario: 名稱不中時以醫令代碼後備
+- **WHEN** 一筆檢驗原始名為 `LDL Chol`（不在別名表、鬆化後亦不在）、
+  order_code 為 `09044C`，且僅 LDL-C 條目宣告 `09044C`
+- **THEN** normalized 為 LDL-C，quality_flags 含 mapped_by_code
+
+##### Example: 代碼取前 6 碼
+- **GIVEN** order_code 為 `09006C00`、原始名 `A1C-X` 不在別名表，
+  HbA1c 條目宣告 `09006C`
+- **WHEN** 重算
+- **THEN** normalized 為 HbA1c，quality_flags 含 mapped_by_code
+
+#### Scenario: 名稱命中優先於代碼
+- **WHEN** 一筆檢驗原始名為 `HDL-C`、order_code 為 `09044C`（LDL-C 之
+  醫令）
+- **THEN** normalized 為 HDL-C，quality_flags 不含 mapped_by_code
+
+#### Scenario: 多分析物醫令不由代碼定名
+- **WHEN** 一筆檢驗原始名為 `XYZ`、order_code 為 `08011C`（全套血液
+  檢查，無條目宣告）
+- **THEN** normalized 為 NULL，quality_flags 含 unmapped
+
+#### Scenario: 升版後開啟舊資料庫自動套用
+- **WHEN** 以含既有 unmapped 列的資料庫啟動新版 App，且新別名表可
+  對到其中部分原始名
+- **THEN** 開庫後不需重新匯入，該些列即帶正規名並移除 unmapped；
+  再次啟動時零列變動
+
+#### Scenario: CLI 重算輸出
+- **WHEN** 執行 `hwb knowledge normalize`
+- **THEN** 印出 `mapped=<n> unmapped=<n> mapped_by_code=<n> updated=<n>`
+  並以 0 退出；緊接再執行一次則 updated=0
+
 
 <!-- @trace
-source: mvp-core-dashboard
-updated: 2026-08-09
+source: lab-order-code-normalization
+updated: 2026-09-19
 code:
   - bin/hwb
   - docs/verification/karen_reality.md
   - README.md
+  - app/src/knowledge/labs.js
+  - src/knowledge/labs.py
+  - app/src/ui/main.js
+  - src/hwb_cli.py
+  - tests/fixtures/nhi_labnorm.json
+  - docs/verification/lab_order_code_normalization.md
 -->
 
 ---
