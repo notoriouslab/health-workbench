@@ -18,7 +18,11 @@ async function totalRows(driver) {
     "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
   let total = 0;
   for (const { name } of tables) {
-    const [{ c }] = await driver.select(`SELECT COUNT(*) c FROM "${name}"`);
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      throw new Error(`不合法的表名：${name}`);
+    }
+    const [{ c }] = await driver.select(
+      "SELECT COUNT(*) c FROM \"" + name + "\"");
     total += c;
   }
   return total;
@@ -28,7 +32,7 @@ async function totalRows(driver) {
 // 現大小 ÷ 全庫總列數 × 將刪列數，一律以「約」呈現，完成後回報實測。
 export async function cleanupPreview(driver) {
   const [{ n: deletableRows }] = await driver.select(
-    `SELECT COUNT(*) n FROM apple_records WHERE type_zh IN (${TYPE_LIST})`);
+    "SELECT COUNT(*) n FROM apple_records WHERE type_zh IN (" + TYPE_LIST + ")");
   const sizeBytes = await dbSizeBytes(driver);
   const total = await totalRows(driver);
   const estAfterBytes = total > 0
@@ -42,17 +46,17 @@ export async function cleanupPreview(driver) {
 // 且該列 n ≥ 該鍵 raw 列數。判準用 n 而非數值欄非 NULL：睡眠等 category
 // 型別的數值欄天生 NULL、資料在 extra_json。
 export async function cleanupGuardBadKeys(driver) {
-  const [{ bad }] = await driver.select(`
-    SELECT COUNT(*) bad FROM (
-      SELECT r.profile_id AS pid, r.type_zh AS tz,
-             substr(r.start_ts,1,10) AS day,
-             COALESCE(r.source_name,'') AS src, COUNT(*) AS raw_n
-      FROM apple_records r WHERE r.type_zh IN (${TYPE_LIST})
-      GROUP BY pid, tz, day, src) k
-    LEFT JOIN apple_daily d
-      ON d.profile_id = k.pid AND d.type_zh = k.tz
-     AND d.day = k.day AND d.source_name = k.src
-    WHERE d.profile_id IS NULL OR d.n < k.raw_n`);
+  const [{ bad }] = await driver.select(
+    "SELECT COUNT(*) bad FROM ("
+    + " SELECT r.profile_id AS pid, r.type_zh AS tz,"
+    + " substr(r.start_ts,1,10) AS day,"
+    + " COALESCE(r.source_name,'') AS src, COUNT(*) AS raw_n"
+    + " FROM apple_records r WHERE r.type_zh IN (" + TYPE_LIST + ")"
+    + " GROUP BY pid, tz, day, src) k"
+    + " LEFT JOIN apple_daily d"
+    + " ON d.profile_id = k.pid AND d.type_zh = k.tz"
+    + " AND d.day = k.day AND d.source_name = k.src"
+    + " WHERE d.profile_id IS NULL OR d.n < k.raw_n");
   return bad;
 }
 
@@ -71,7 +75,7 @@ export async function releaseSpace(driver) {
   let deletedRows = 0;
   await driver.transaction(async (tx) => {
     const r = await tx.execute(
-      `DELETE FROM apple_records WHERE type_zh IN (${TYPE_LIST})`);
+      "DELETE FROM apple_records WHERE type_zh IN (" + TYPE_LIST + ")");
     deletedRows = r.changes ?? 0;
   });
   let vacuumError = null;
