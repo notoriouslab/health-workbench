@@ -2,29 +2,30 @@
  {
   "normalized_name": "WBC",
   "aliases": [],
-  "description": "白血球計數（White Blood Cell count），全血球計數（CBC）項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "白血球計數（White Blood Cell count），全血球計數（CBC）項目之一，屬醫令 08011C 全套血液檢查Ｉ(八項)。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "RBC",
   "aliases": [],
-  "description": "紅血球計數（Red Blood Cell count），全血球計數（CBC）項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "紅血球計數（Red Blood Cell count），全血球計數（CBC）項目之一，屬醫令 08011C 全套血液檢查Ｉ(八項)。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Hemoglobin",
   "aliases": [
    "Hb",
-   "HB"
+   "HB",
+   "HGB"
   ],
-  "description": "血紅素（Hemoglobin），全血球計數（CBC）項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "血紅素（Hemoglobin），全血球計數（CBC）項目之一，屬醫令 08011C 全套血液檢查Ｉ(八項)。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Hematocrit",
@@ -32,86 +33,86 @@
    "Hct",
    "HCT"
   ],
-  "description": "血比容（Hematocrit），全血球計數（CBC）項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "血比容（Hematocrit），全血球計數（CBC）項目之一，屬醫令 08011C 全套血液檢查Ｉ(八項)。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "PLT",
   "aliases": [],
-  "description": "血小板計數（Platelet count），全血球計數（CBC）項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "血小板計數（Platelet count），全血球計數（CBC）項目之一，屬醫令 08011C 全套血液檢查Ｉ(八項)。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "MCV",
   "aliases": [],
-  "description": "平均紅血球容積（Mean Corpuscular Volume）。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "平均紅血球容積（Mean Corpuscular Volume），屬醫令 08011C 全套血液檢查Ｉ(八項)。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "MCH",
   "aliases": [],
-  "description": "平均紅血球血紅素量（Mean Corpuscular Hemoglobin）。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "平均紅血球血紅素量（Mean Corpuscular Hemoglobin），屬醫令 08011C 全套血液檢查Ｉ(八項)。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "MCHC",
   "aliases": [],
-  "description": "平均紅血球血紅素濃度（Mean Corpuscular Hemoglobin Concentration）。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "平均紅血球血紅素濃度（Mean Corpuscular Hemoglobin Concentration），屬醫令 08011C 全套血液檢查Ｉ(八項)。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "RDW-CV",
   "aliases": [],
-  "description": "紅血球分布寬度變異係數（Red cell Distribution Width, CV）。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "紅血球分布寬度變異係數（Red cell Distribution Width, CV），屬醫令 08011C 全套血液檢查Ｉ(八項)。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "RDW-SD",
   "aliases": [],
-  "description": "紅血球分布寬度標準差（Red cell Distribution Width, SD）。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "紅血球分布寬度標準差（Red cell Distribution Width, SD），屬醫令 08011C 全套血液檢查Ｉ(八項)。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Neutrophil",
   "aliases": [
    "Neut"
   ],
-  "description": "嗜中性球比例（Neutrophil），白血球分類計數項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "嗜中性球比例（Neutrophil），白血球分類計數項目之一，屬醫令 08013C 白血球分類計數。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Segmented Neutrophil",
   "aliases": [
    "Seg"
   ],
-  "description": "分葉核嗜中性球比例（Segmented Neutrophil），白血球分類計數項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "分葉核嗜中性球比例（Segmented Neutrophil），白血球分類計數項目之一，屬醫令 08013C 白血球分類計數。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Band",
   "aliases": [],
-  "description": "帶狀核嗜中性球比例（Band form Neutrophil），白血球分類計數項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "帶狀核嗜中性球比例（Band form Neutrophil），白血球分類計數項目之一，屬醫令 08013C 白血球分類計數。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Lymphocyte",
@@ -119,10 +120,10 @@
    "Lym",
    "Lym."
   ],
-  "description": "淋巴球比例（Lymphocyte），白血球分類計數項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "淋巴球比例（Lymphocyte），白血球分類計數項目之一，屬醫令 08013C 白血球分類計數。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Monocyte",
@@ -130,10 +131,10 @@
    "Mono",
    "Mono."
   ],
-  "description": "單核球比例（Monocyte），白血球分類計數項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "單核球比例（Monocyte），白血球分類計數項目之一，屬醫令 08013C 白血球分類計數。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Eosinophil",
@@ -141,156 +142,177 @@
    "Eos",
    "Eos."
   ],
-  "description": "嗜酸性球比例（Eosinophil），白血球分類計數項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "嗜酸性球比例（Eosinophil），白血球分類計數項目之一，屬醫令 08013C 白血球分類計數。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Basophil",
   "aliases": [
    "Baso."
   ],
-  "description": "嗜鹼性球比例（Basophil），白血球分類計數項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "嗜鹼性球比例（Basophil），白血球分類計數項目之一，屬醫令 08013C 白血球分類計數。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Atypical Lymphocyte",
   "aliases": [
    "Aty.Lym."
   ],
-  "description": "非典型淋巴球比例（Atypical Lymphocyte），白血球分類計數項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "非典型淋巴球比例（Atypical Lymphocyte），白血球分類計數項目之一，屬醫令 08013C 白血球分類計數。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Blast",
   "aliases": [],
-  "description": "芽細胞比例（Blast），白血球分類計數項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "芽細胞比例（Blast），白血球分類計數項目之一，屬醫令 08013C 白血球分類計數。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Metamyelocyte",
   "aliases": [
    "Meta"
   ],
-  "description": "晚幼粒細胞比例（Metamyelocyte），白血球分類計數項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "晚幼粒細胞比例（Metamyelocyte），白血球分類計數項目之一，屬醫令 08013C 白血球分類計數。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Myelocyte",
   "aliases": [
    "Myelo."
   ],
-  "description": "中幼粒細胞比例（Myelocyte），白血球分類計數項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "中幼粒細胞比例（Myelocyte），白血球分類計數項目之一，屬醫令 08013C 白血球分類計數。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Promyelocyte",
   "aliases": [
    "Promyl."
   ],
-  "description": "早幼粒細胞比例（Promyelocyte），白血球分類計數項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "早幼粒細胞比例（Promyelocyte），白血球分類計數項目之一，屬醫令 08013C 白血球分類計數。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Normoblast",
   "aliases": [
    "Normobl."
   ],
-  "description": "有核紅血球（Normoblast），週邊血液分類計數紀錄項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "有核紅血球（Normoblast），週邊血液分類計數紀錄項目之一，屬醫令 08013C 白血球分類計數。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Plasma Cell",
   "aliases": [
    "PlasmaCell"
   ],
-  "description": "漿細胞比例（Plasma Cell），白血球分類計數項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "漿細胞比例（Plasma Cell），白血球分類計數項目之一，屬醫令 08013C 白血球分類計數。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "AFP",
   "aliases": [],
-  "description": "甲型胎兒蛋白（Alpha-Fetoprotein），血清檢驗項目。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "甲型胎兒蛋白（Alpha-Fetoprotein），血清檢驗項目，屬醫令 12007C α－胎兒蛋白檢驗。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09",
+  "order_codes": [
+   "12007C"
+  ]
  },
  {
   "normalized_name": "CEA",
   "aliases": [],
-  "description": "癌胚抗原（Carcinoembryonic Antigen），血清檢驗項目。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "癌胚抗原（Carcinoembryonic Antigen），血清檢驗項目，屬醫令 12021C 癌胚胎抗原檢驗。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09",
+  "order_codes": [
+   "12021C"
+  ]
  },
  {
   "normalized_name": "CA 19-9",
   "aliases": [
    "CA 199"
   ],
-  "description": "醣類抗原 19-9（Carbohydrate Antigen 19-9），血清檢驗項目。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "醣類抗原 19-9（Carbohydrate Antigen 19-9），血清檢驗項目，屬醫令 12079C ＣＡ–199腫瘤標記(EIA/LIA法)。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09",
+  "order_codes": [
+   "12079C"
+  ]
  },
  {
   "normalized_name": "CRP",
   "aliases": [],
-  "description": "C 反應蛋白（C-Reactive Protein），血清檢驗項目。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "C 反應蛋白（C-Reactive Protein），血清檢驗項目，屬醫令 12015C Ｃ反應性蛋白試驗－免疫比濁法。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09",
+  "order_codes": [
+   "12015C"
+  ]
  },
  {
   "normalized_name": "ALT",
   "aliases": [],
-  "description": "丙胺酸轉胺酶（Alanine Aminotransferase，亦稱 GPT），肝功能相關檢驗項目。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "丙胺酸轉胺酶（Alanine Aminotransferase，亦稱 GPT），肝功能相關檢驗項目，屬醫令 09026C 血清麩胺酸丙酮酸轉氨基脢。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "AST",
   "aliases": [],
-  "description": "天門冬胺酸轉胺酶（Aspartate Aminotransferase，亦稱 GOT），肝功能相關檢驗項目。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "天門冬胺酸轉胺酶（Aspartate Aminotransferase，亦稱 GOT），肝功能相關檢驗項目，屬醫令 09025C 血清麩胺酸苯醋酸轉氨基脢。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09",
+  "order_codes": [
+   "09025C"
+  ]
  },
  {
   "normalized_name": "Total Bilirubin",
   "aliases": [
    "T. Bili"
   ],
-  "description": "總膽紅素（Total Bilirubin）。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "總膽紅素（Total Bilirubin），屬醫令 09029C 膽紅素總量。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09",
+  "order_codes": [
+   "09029C"
+  ]
  },
  {
   "normalized_name": "Lipase",
   "aliases": [],
-  "description": "脂肪酶（Lipase）。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "脂肪酶（Lipase），屬醫令 09064C 解脂酶。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09",
+  "order_codes": [
+   "09064C"
+  ]
  },
  {
   "normalized_name": "Blood Urea Nitrogen",
@@ -298,10 +320,13 @@
    "BUN",
    "UN"
   ],
-  "description": "血中尿素氮（Blood Urea Nitrogen），腎功能相關檢驗項目。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "血中尿素氮（Blood Urea Nitrogen），腎功能相關檢驗項目，屬醫令 09002C 血中尿素氮。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09",
+  "order_codes": [
+   "09002C"
+  ]
  },
  {
   "normalized_name": "Creatinine",
@@ -309,57 +334,202 @@
    "CRE",
    "Cr"
   ],
-  "description": "肌酸酐（Creatinine），腎功能相關檢驗項目。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "description": "肌酸酐（Creatinine），腎功能相關檢驗項目，屬醫令 09015C 肌酸酐、血。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "eGFR (CKD-EPI)",
   "aliases": [],
   "description": "以 CKD-EPI 公式估算之腎絲球過濾率。不同公式之估算值不併入同一趨勢線。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "source_name": "健保存摺檢驗結果檔內原始項目名稱（本工具整理，無官方說明來源）",
+  "source_url": "https://github.com/notoriouslab/health-workbench#readme",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "eGFR (MDRD)",
   "aliases": [],
   "description": "以 MDRD 公式估算之腎絲球過濾率。不同公式之估算值不併入同一趨勢線。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "source_name": "健保存摺檢驗結果檔內原始項目名稱（本工具整理，無官方說明來源）",
+  "source_url": "https://github.com/notoriouslab/health-workbench#readme",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "eGFR Male",
   "aliases": [],
   "description": "院所報告之腎絲球過濾率變體（報告名稱標示 Male）。與其他 eGFR 公式各自獨立成組。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "source_name": "健保存摺檢驗結果檔內原始項目名稱（本工具整理，無官方說明來源）",
+  "source_url": "https://github.com/notoriouslab/health-workbench#readme",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Hemolysis",
   "aliases": [],
   "description": "檢體溶血指標（specimen index），反映檢體狀態而非身體數值。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "source_name": "健保存摺檢驗結果檔內原始項目名稱（本工具整理，無官方說明來源）",
+  "source_url": "https://github.com/notoriouslab/health-workbench#readme",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Icterus",
   "aliases": [],
   "description": "檢體黃疸指標（specimen index），反映檢體狀態而非身體數值。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "source_name": "健保存摺檢驗結果檔內原始項目名稱（本工具整理，無官方說明來源）",
+  "source_url": "https://github.com/notoriouslab/health-workbench#readme",
+  "cited_date": "2026-09-09"
  },
  {
   "normalized_name": "Lipemia",
   "aliases": [],
   "description": "檢體脂血指標（specimen index），反映檢體狀態而非身體數值。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
-  "source_name": "衛生福利部中央健康保險署（健康存摺檢驗(查)結果資料說明）",
-  "source_url": "https://www.nhi.gov.tw/ch/cp-7395-567d7-3255-1.html",
-  "cited_date": "2026-08-08"
+  "source_name": "健保存摺檢驗結果檔內原始項目名稱（本工具整理，無官方說明來源）",
+  "source_url": "https://github.com/notoriouslab/health-workbench#readme",
+  "cited_date": "2026-09-09"
+ },
+ {
+  "normalized_name": "Total Cholesterol",
+  "aliases": [
+   "CHOL",
+   "T-CHOL",
+   "Cholesterol, Total",
+   "總膽固醇"
+  ],
+  "description": "總膽固醇（Total Cholesterol），血脂檢驗項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09",
+  "order_codes": [
+   "09001C"
+  ]
+ },
+ {
+  "normalized_name": "Triglyceride",
+  "aliases": [
+   "TG",
+   "Triglycerides",
+   "TRIG",
+   "三酸甘油酯"
+  ],
+  "description": "三酸甘油酯（Triglyceride），血脂檢驗項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09",
+  "order_codes": [
+   "09004C"
+  ]
+ },
+ {
+  "normalized_name": "HDL-C",
+  "aliases": [
+   "HDL",
+   "HDL-Cholesterol",
+   "Cholesterol-HDL",
+   "高密度脂蛋白膽固醇"
+  ],
+  "description": "高密度脂蛋白膽固醇（High-Density Lipoprotein Cholesterol），血脂檢驗項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09",
+  "order_codes": [
+   "09043C"
+  ]
+ },
+ {
+  "normalized_name": "LDL-C",
+  "aliases": [
+   "LDL",
+   "LDL-Cholesterol",
+   "Cholesterol-LDL",
+   "低密度脂蛋白膽固醇"
+  ],
+  "description": "低密度脂蛋白膽固醇（Low-Density Lipoprotein Cholesterol），血脂檢驗項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09",
+  "order_codes": [
+   "09044C"
+  ]
+ },
+ {
+  "normalized_name": "Glucose AC",
+  "aliases": [
+   "GLU-AC",
+   "AC Sugar",
+   "Fasting Glucose",
+   "Glucose (Fasting)",
+   "空腹血糖"
+  ],
+  "description": "空腹血糖（Fasting Glucose），代謝相關檢驗項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09",
+  "order_codes": [
+   "09005C"
+  ]
+ },
+ {
+  "normalized_name": "HbA1c",
+  "aliases": [
+   "A1C",
+   "HgbA1c",
+   "Glycated Hemoglobin",
+   "糖化血色素"
+  ],
+  "description": "糖化血色素（Hemoglobin A1c），代謝相關檢驗項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09",
+  "order_codes": [
+   "09006C"
+  ]
+ },
+ {
+  "normalized_name": "Uric Acid",
+  "aliases": [
+   "UA",
+   "Urate",
+   "Serum Uric Acid",
+   "尿酸"
+  ],
+  "description": "尿酸（Uric Acid），代謝相關檢驗項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09",
+  "order_codes": [
+   "09013C"
+  ]
+ },
+ {
+  "normalized_name": "Sodium",
+  "aliases": [
+   "Na",
+   "Na+",
+   "Serum Sodium",
+   "鈉"
+  ],
+  "description": "鈉（Sodium），電解質檢驗項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09",
+  "order_codes": [
+   "09021C"
+  ]
+ },
+ {
+  "normalized_name": "Potassium",
+  "aliases": [
+   "K",
+   "K+",
+   "Serum Potassium",
+   "鉀"
+  ],
+  "description": "鉀（Potassium），電解質檢驗項目之一。 本工具僅整理與顯示紀錄，數值意義請與醫師或醫檢師確認。",
+  "source_name": "衛生福利部（臺灣核心實作指引：臺灣健保署醫療服務給付項目 CodeSystem）",
+  "source_url": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem-medical-service-payment-tw.html",
+  "cited_date": "2026-09-09",
+  "order_codes": [
+   "09022C"
+  ]
  }
 ]

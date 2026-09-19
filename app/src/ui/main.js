@@ -9,6 +9,7 @@ import { resolveDbPath, importExistingDb, backupFileName, exportDbSnapshot,
   from "../store/location.js";
 import { loadSettings, saveSettings, resolveCurrentProfile } from "../store/settings.js";
 import { listProfiles } from "../engine/profiles.js";
+import { normalizeLabResults } from "../knowledge/labs.js";
 import { createImportFlow } from "./import_flow.js";
 import { createViewer } from "./viewer.js";
 import { defaultSavePath } from "./paths.js";
@@ -31,7 +32,7 @@ function notify(text, ms = 5000) {
   noticeTimer = setTimeout(() => { noticeEl.hidden = true; }, ms);
 }
 const app = { driver: null, dbPath: null, dbDir: null, currentProfileId: null,
-  flow: null, viewer: null, history: null, manager: null };
+  flow: null, viewer: null, history: null, manager: null, labEntries: [] };
 
 const esc = (s) => String(s).replaceAll("&", "&amp;").replaceAll("<", "&lt;")
   .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
@@ -166,12 +167,18 @@ async function migrateWithSnapshot() {
 }
 
 async function boot() {
+  // 條目提前於開庫前載入：啟動重算要在遷移完成後、設定當前成員之前跑，
+  // 那時 wireUi() 還沒開始（change lab-order-code-normalization D3）。
+  app.labEntries = await loadLabEntries();
   const { path, overridden } = await resolveDbPath();
   app.dbPath = path;
   app.dbDir = path.replace(/[/\\][^/\\]+$/, "");
   await window.__TAURI__.fs.mkdir(app.dbDir, { recursive: true }).catch(() => {});
   app.driver = await TauriDriver.open(path);
   await migrateWithSnapshot();
+  // 升版後首次啟動自動套用新別名表與醫令代碼後備，使用者不必重新匯入。
+  // 無狀態、只寫變動列；失敗只警告不阻擋啟動（既有資料照常可看）。
+  await normalizeAfterOpen();
   const profiles = await listProfiles(app.driver);
   app.currentProfileId = resolveCurrentProfile(
     await loadSettings(app.dbDir), profiles);
@@ -199,7 +206,20 @@ async function importExisting(srcPath) {
     app.driver = await TauriDriver.open(app.dbPath);
     // 匯入的舊庫同樣可能需要遷移，走同一條「先快照再遷移」的路徑
     await migrateWithSnapshot();
+    // 匯入的舊庫同樣要重算（spec：開庫並完成遷移後 MUST 重算，兩條開庫路徑一致）
+    await normalizeAfterOpen();
     if (app.flow) await setCurrentProfile(app.currentProfileId).catch(() => {});
+  }
+}
+
+// 開庫並遷移完成後的檢驗名稱重算（change lab-order-code-normalization D3）：
+// 無狀態、只寫變動列；失敗只警告不阻擋（既有資料照常可看）。boot() 與
+// importExisting() 兩條開庫路徑都走這裡。
+async function normalizeAfterOpen() {
+  try {
+    await normalizeLabResults(app.driver, app.labEntries);
+  } catch (err) {
+    console.warn("檢驗名稱重算失敗", err);
   }
 }
 
@@ -230,7 +250,8 @@ function setTab(name) {
 }
 
 async function wireUi() {
-  const labEntries = await loadLabEntries();
+  // boot() 已於開庫前載入，這裡不重抓（載入失敗時 boot 就已中止）
+  const labEntries = app.labEntries;
   const bodyRefs = await loadBodyRefs();
   document.getElementById("tab-btn-import").addEventListener("click", () => setTab("import"));
   document.getElementById("tab-btn-viewer").addEventListener("click", () => setTab("viewer"));

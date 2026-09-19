@@ -1,6 +1,9 @@
-"""CLI：--help 四子命令、status、quality、判型錯誤。"""
+"""CLI：--help 四子命令、status、quality、判型錯誤、knowledge normalize。"""
+import re
+import sqlite3
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -61,3 +64,44 @@ def test_zip_import(tmp_path):
                 "--no-rebuild", "--yes")
     assert r.returncode == 0
     assert "輸出.xml" in r.stdout  # 中文檔名無 mojibake
+
+
+def test_knowledge_normalize(tmp_path):
+    """hwb knowledge normalize：印出四個計數、exit 0，第二次 updated=0。"""
+    db = tmp_path / "n.sqlite"
+    fixture = Path(__file__).parent / "fixtures" / "nhi_labnorm.json"
+    imp = run_cli("--db", str(db), "import", str(fixture), "--no-rebuild", "--yes")
+    assert imp.returncode == 0, imp.stderr
+
+    first = run_cli("--db", str(db), "knowledge", "normalize")
+    assert first.returncode == 0, first.stderr
+    line = first.stdout.strip().splitlines()[-1]
+    assert re.match(r"^mapped=\d+ unmapped=\d+ mapped_by_code=\d+ updated=\d+$", line), line
+    # 匯入尾端已重算過，故此處本來就該零變動；形狀與數值一併釘住
+    assert line == "mapped=7 unmapped=2 mapped_by_code=2 updated=0"
+
+    second = run_cli("--db", str(db), "knowledge", "normalize")
+    assert second.returncode == 0
+    assert second.stdout.strip().splitlines()[-1].endswith("updated=0")
+
+
+def test_knowledge_normalize_recovers_stale_rows(tmp_path):
+    """舊庫殘留的 unmapped 列：normalize 一次補上正規名，再跑就零變動。"""
+    db = tmp_path / "stale.sqlite"
+    fixture = Path(__file__).parent / "fixtures" / "nhi_labnorm.json"
+    assert run_cli("--db", str(db), "import", str(fixture),
+                   "--no-rebuild", "--yes").returncode == 0
+    # 模擬 0.9.0 舊程式留下的狀態：正規名全清、全部標 unmapped
+    con = sqlite3.connect(db)
+    con.execute("UPDATE lab_results SET test_name_normalized=NULL, quality_flags='unmapped'")
+    con.commit()
+    con.close()
+
+    r = run_cli("--db", str(db), "knowledge", "normalize")
+    assert r.returncode == 0, r.stderr
+    # updated=7 而非 9：兩筆本來就對不到的列，清洗後的狀態（NULL＋unmapped）
+    # 恰好等於重算目標，只寫變動列的規則讓它們不被 UPDATE
+    assert r.stdout.strip().splitlines()[-1] == \
+        "mapped=7 unmapped=2 mapped_by_code=2 updated=7"
+    again = run_cli("--db", str(db), "knowledge", "normalize")
+    assert again.stdout.strip().splitlines()[-1].endswith("updated=0")

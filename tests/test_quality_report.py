@@ -43,3 +43,28 @@ def test_incremental_vs_full(tmp_path):
     assert inc["dedup"]["skipped_dup"] == {}
     assert inc["source"]["filename"] == "f.json"
     s.close()
+
+
+def test_mapped_by_code_flag_is_auditable(tmp_path):
+    """代碼後備的每一筆都要能稽核：進旗標統計，但不算「未對照」。
+
+    lab-order-code-normalization T6.1：旗標統計由既有的逐表掃描自動彙總，
+    不需要動品質報告契約，故一併釘住 TOP_KEYS 沒有多出鍵。
+    """
+    s = _seeded_store(tmp_path)
+    pid = s.con.execute("SELECT id FROM profiles").fetchone()[0]
+    doc = s.con.execute("SELECT id FROM source_documents").fetchone()[0]
+    s.insert_fp_record("lab_results", {"r7.10": "LDL Chol"}, profile_id=pid, doc_id=doc,
+                       section="r7", source_index=1,
+                       columns={"test_name_raw": "LDL Chol", "order_code": "09044C",
+                                "test_name_normalized": "LDL-C",
+                                "test_date": "2026-01-02"},
+                       quality_flags="mapped_by_code")
+    s.commit()
+    full = build_full(s)
+    assert list(full) == TOP_KEYS                       # 契約未被觸動
+    assert full["quality_flags"]["mapped_by_code"] == 1
+    assert full["quality_flags"]["unmapped"] == 1
+    # 「未對照檢驗名」只列真的沒對到的，代碼後備的那筆 MUST NOT 出現
+    assert full["unmapped_lab_names"] == ["MYSTERY"]
+    s.close()

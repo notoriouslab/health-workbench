@@ -8,6 +8,7 @@ import { runParity, REPO } from "./harness.mjs";
 const NHI = `${REPO}/tests/fixtures/nhi_sample.json`;
 const APPLE = `${REPO}/tests/fixtures/apple_sample.xml`;
 const NHI_CTRL = `${REPO}/tests/fixtures/nhi_ctrlchar.json`;
+const NHI_LABNORM = `${REPO}/tests/fixtures/nhi_labnorm.json`;
 
 test("parity：nhi fixture 單檔全表全等＋報告全等", async () => {
   const { dbDiffs, reportDiffs } = await runParity(
@@ -44,6 +45,16 @@ test("parity：同檔重複匯入（冪等跳過）後仍全等", async () => {
 test("parity：報告欄位含未跳脫原始控制字元的檔案，兩實作全等（issue #2）", async () => {
   const { dbDiffs, reportDiffs } = await runParity(
     [NHI_CTRL], mkdtempSync(path.join(tmpdir(), "hwb-par-ctrl-")));
+  assert.deepEqual(dbDiffs, []);
+  assert.deepEqual(reportDiffs, []);
+});
+
+// 名稱鬆比對與醫令代碼後備是兩份各自寫的實作（NFKC、大寫、字元集、取前
+// 6 碼皆各寫一次），逐位元組對帳才擋得住「其中一端對全形或標點的處理不同」。
+// 向量 9（ＬＤＬ－Ｃ）與向量 6（8 碼取前 6）是這條線的主要壓力點。
+test("parity：檢驗名稱三級短路 fixture（含全形與代碼後備）兩實作全等", async () => {
+  const { dbDiffs, reportDiffs } = await runParity(
+    [NHI_LABNORM], mkdtempSync(path.join(tmpdir(), "hwb-par-labnorm-")));
   assert.deepEqual(dbDiffs, []);
   assert.deepEqual(reportDiffs, []);
 });

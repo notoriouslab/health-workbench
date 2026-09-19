@@ -10,9 +10,11 @@ import { nhiJsonAdapter } from "../../src/adapters/nhi_json.js";
 import { createRegistry } from "../../src/adapters/registry.js";
 import { EngineStore } from "../../src/engine/store.js";
 import { createProfile } from "../../src/engine/profiles.js";
+import { TOP_KEYS } from "../../src/engine/quality_report.js";
 
 const REPO = new URL("../../..", import.meta.url).pathname;
 const FIXTURE = `${REPO}/tests/fixtures/nhi_sample.json`;
+const LABNORM_FIXTURE = `${REPO}/tests/fixtures/nhi_labnorm.json`;
 const LAB_ENTRIES = JSON.parse(
   readFileSync(new URL("../../src/knowledge/labs.json", import.meta.url), "utf-8"));
 
@@ -172,4 +174,49 @@ test("擴充點：假 adapter 註冊即被判型路由，格式清單自動含�
   });
   assert.equal(reg.detect(new Uint8Array([0x50, 0x4B, 0x99]), "x.bin"), fake);
   assert.ok(reg.formats().includes("假 Excel 格式（測試）"));
+});
+
+// ---- 檢驗名稱三級短路端到端（design D5 向量；T4.1／T6.1）----
+//
+// Python 端同一斷言在 tests/test_nhi.py::test_lab_name_normalization_levels。
+
+async function importLabnorm(driver) {
+  const profileId = await ensureProfile(driver);
+  return nhiJsonAdapter.importSource(
+    { bytes: new Uint8Array(readFileSync(LABNORM_FIXTURE)), name: "nhi_labnorm.json" },
+    driver, null, { labEntries: LAB_ENTRIES, profileId });
+}
+
+test("匯入 labnorm fixture：九列 normalized 與旗標逐列符合 D5 表", async () => {
+  const d = await freshDriver();
+  const r = await importLabnorm(d);
+  assert.equal(r.status, "ok");
+  const rows = await d.select(
+    "SELECT test_name_raw, test_name_normalized, quality_flags FROM lab_results"
+    + " ORDER BY source_index");
+  assert.deepEqual(
+    rows.map(x => [x.test_name_raw, x.test_name_normalized, x.quality_flags]), [
+      ["LDL-C", "LDL-C", ""],                             // 精確命中
+      ["LDL-Cholesterol", "LDL-C", ""],                   // 別名命中
+      ["l.d.l. cholesterol ", "LDL-C", ""],               // 鬆化命中
+      ["LDL Chol", "LDL-C", "mapped_by_code"],            // 名稱不中、代碼後備
+      ["HDL-C", "HDL-C", ""],                             // 名稱優先於代碼
+      ["A1C-X", "HbA1c", "mapped_by_code"],               // 8 碼取前 6
+      ["XYZ", null, "missing_ref_range,unmapped"],        // 多項醫令不後備
+      ["Unknown Thing", null, "unmapped"],                // 無代碼
+      ["ＬＤＬ－Ｃ", "LDL-C", ""],                          // 全形經 NFKC
+    ]);
+  await d.close();
+});
+
+test("品質報告：mapped_by_code 進旗標統計，未對照清單只列 unmapped", async () => {
+  const d = await freshDriver();
+  const r = await importLabnorm(d);
+  // 代碼後備每一筆都可稽核（旗標統計是既有的 qualityFlagCounts 自動彙總）
+  assert.equal(r.report.quality_flags.mapped_by_code, 2);
+  // 匯入結果頁的「未對照檢驗名」只該列真正沒對到的兩筆
+  assert.deepEqual(r.report.unmapped_lab_names, ["Unknown Thing", "XYZ"]);
+  // 契約未被觸動：頂層鍵仍是原本八個、順序不變
+  assert.deepEqual(Object.keys(r.report), TOP_KEYS);
+  await d.close();
 });

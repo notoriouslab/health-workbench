@@ -1,5 +1,6 @@
 """knowledge-annotations：條目結構、別名映射、eGFR 不合併、禁用詞、藥品 join、過時提醒。"""
 import csv
+import hashlib
 import sqlite3
 from datetime import date
 from pathlib import Path
@@ -9,10 +10,27 @@ import pytest
 from src.adapters.nhi_json import NhiJsonAdapter
 from src.knowledge.drugs import DrugLookup, cache_path, update_cache
 from src.knowledge.labs import (KnowledgeError, alias_map, apply_normalization,
-                                load_entries, stale_entries)
+                                code_map, exact_key, exact_map, load_entries, loose_key,
+                                match_name, stale_entries)
 from src.store.db import Store
 
 FIXTURE = Path(__file__).parent / "fixtures" / "nhi_sample.json"
+
+
+def _entry_yaml(*entries):
+    """組出最小合規 yaml 文字（六必填欄位齊備），額外鍵原樣附加。"""
+    out = []
+    for e in entries:
+        lines = [f"- normalized_name: {e['normalized_name']}",
+                 f"  aliases: {e.get('aliases', [])}",
+                 "  description: '說明文字。'",
+                 "  source_name: '來源'",
+                 "  source_url: 'https://example.gov.tw'",
+                 "  cited_date: '2026-01-01'"]
+        if "order_codes" in e:
+            lines.append(f"  order_codes: {e['order_codes']}")
+        out.append("\n".join(lines))
+    return "\n".join(out) + "\n"
 
 
 def test_entry_schema():
@@ -32,25 +50,36 @@ def test_entry_schema_missing_field(tmp_path):
 
 
 def test_alias_mapping():
+    # 別名表改以鬆化鍵建索引（design D2），查表一律經 loose_key
     m = alias_map(load_entries())
-    assert m["Hb"] == m["HB"] == "Hemoglobin"
-    assert m["Lym"] == m["Lym."] == "Lymphocyte"
-    assert m["BUN"] == m["UN"] == "Blood Urea Nitrogen"
+    assert m[loose_key("Hb")] == m[loose_key("HB")] == "Hemoglobin"
+    assert m[loose_key("HGB")] == "Hemoglobin"
+    assert m[loose_key("Lym")] == m[loose_key("Lym.")] == "Lymphocyte"
+    assert m[loose_key("BUN")] == m[loose_key("UN")] == "Blood Urea Nitrogen"
+    # 各院常見的三種 LDL 寫法鬆化後同鍵、同指 LDL-C
+    assert (m[loose_key("LDL-Cholesterol")] == m[loose_key("LDL Cholesterol")]
+            == m[loose_key("l.d.l. cholesterol ")] == "LDL-C")
 
 
 def test_egfr_not_merged():
     m = alias_map(load_entries())
-    targets = {m.get("eGFR (CKD-EPI)"), m.get("eGFR (MDRD)"), m.get("eGFR Male")}
-    assert len(targets) == 3  # 三個公式/變體各自獨立
+    keys = {loose_key(n) for n in ("eGFR (CKD-EPI)", "eGFR (MDRD)", "eGFR Male")}
+    assert len(keys) == 3               # 鬆化後仍為三個相異鍵
+    targets = {m.get(k) for k in keys}
+    assert len(targets) == 3            # 三個公式/變體各自獨立
 
 
 def test_normalized_write(tmp_path):
     db = tmp_path / "k.sqlite"
     NhiJsonAdapter().import_file(FIXTURE, db_path=db, assume_profile=True)
     s = Store(db)
-    # fixture 的 HGB 不在別名表 → unmapped；驗證欄位與旗標行為
+    # fixture 的 URINE PROTEIN 不在別名表、其醫令 08012C 無人宣告 → unmapped
+    # （HGB 自 lab-order-code-normalization 起已進別名表，不再是哨兵）
     rows = s.con.execute(
         "SELECT test_name_raw, test_name_normalized, quality_flags FROM lab_results").fetchall()
+    got = {r["test_name_raw"]: r["test_name_normalized"] for r in rows}
+    assert got["HGB"] == "Hemoglobin"
+    assert got["URINE PROTEIN"] is None
     for r in rows:
         if r["test_name_normalized"] is None:
             assert "unmapped" in r["quality_flags"]
@@ -60,6 +89,160 @@ def test_normalized_write(tmp_path):
         "SELECT quality_flags FROM lab_results WHERE test_name_normalized IS NULL").fetchone()[0]
     assert flags.split(",").count("unmapped") == 1
     s.close()
+
+
+# ---- 三級短路：名稱鬆比對 → 醫令代碼後備 → unmapped（T2.1）----
+#
+# 九列向量取自 design D5 表，每列對應一條規則。向量 4 與 6 的名稱刻意取
+# 「不在別名表、鬆化後也不在」的寫法，證明是代碼而非名稱命中。
+
+# (order_code, test_name_raw, 起始 quality_flags, 預期 normalized, 預期 flags)
+LEVEL_VECTORS = [
+    ("09044C", "LDL-C", "", "LDL-C", ""),                       # 1 精確命中
+    ("09044C", "LDL-Cholesterol", "", "LDL-C", ""),             # 2 別名命中
+    ("09044C", "l.d.l. cholesterol ", "", "LDL-C", ""),         # 3 鬆化命中
+    ("09044C", "LDL Chol", "", "LDL-C", "mapped_by_code"),      # 4 代碼後備
+    ("09044C", "HDL-C", "unmapped", "HDL-C", ""),               # 5 名稱優先於代碼
+    ("09006C00", "A1C-X", "", "HbA1c", "mapped_by_code"),       # 6 8 碼取前 6
+    ("08011C", "XYZ", "value_unparsed,mapped_by_code",
+     None, "value_unparsed,unmapped"),                          # 7 多項醫令不後備
+    (None, "Unknown Thing", "", None, "unmapped"),              # 8 無代碼
+    ("09044C", "ＬＤＬ－Ｃ", "", "LDL-C", ""),                    # 9 全形經 NFKC
+    (None, "N/A", "", None, "unmapped"),                        # 10 短鍵不鬆化（≠ Na）
+    (None, "U/A", "", None, "unmapped"),                        # 11 短鍵不鬆化（≠ UA）
+    (None, "n.a.", "", None, "unmapped"),                       # 12 短鍵不鬆化
+    ("09021C", "N/A", "", "Sodium", "mapped_by_code"),          # 13 短鍵不中→代碼後備可稽核
+]
+
+
+def _seed_lab_rows(db, vectors):
+    """建最小 profiles/source_documents 骨架後手插 lab_results 向量列。"""
+    s = Store(db)
+    cur = s.con.cursor()
+    cur.execute("INSERT INTO profiles(id, display_name) VALUES (1, '測試成員')")
+    cur.execute("INSERT INTO source_documents(id, profile_id, filename, sha256, "
+                "adapter, adapter_version) VALUES (1, 1, 'f.json', 'x', 'test', '1')")
+    for i, (code, raw, flags, _, _) in enumerate(vectors):
+        cur.execute(
+            "INSERT INTO lab_results(profile_id, doc_id, section, source_index, "
+            "record_fp, canonical, order_code, test_name_raw, quality_flags) "
+            "VALUES (1, 1, 'r7', ?, ?, '{}', ?, ?, ?)",
+            (i, f"fp{i}", code, raw, flags))
+    s.con.commit()
+    return s
+
+
+def test_normalization_levels(tmp_path):
+    """逐列驗三級短路結果，且非本包管轄的既有旗標原樣保留。"""
+    s = _seed_lab_rows(tmp_path / "lv.sqlite", LEVEL_VECTORS)
+    counts = apply_normalization(s)
+    rows = s.con.execute(
+        "SELECT test_name_raw, test_name_normalized, quality_flags "
+        "FROM lab_results ORDER BY source_index").fetchall()
+    got = [(r["test_name_raw"], r["test_name_normalized"], r["quality_flags"])
+           for r in rows]
+    want = [(v[1], v[3], v[4]) for v in LEVEL_VECTORS]
+    assert got == want
+    assert counts == {"mapped": 8, "unmapped": 5, "mapped_by_code": 3, "updated": 13}
+    s.close()
+
+
+def test_normalization_idempotent_no_write(tmp_path):
+    """第二次呼叫零列變動，且資料庫檔位元組不變。"""
+    db = tmp_path / "idem.sqlite"
+    s = _seed_lab_rows(db, LEVEL_VECTORS)
+    first = apply_normalization(s)
+    assert first["updated"] == 13
+    before = hashlib.sha256(db.read_bytes()).hexdigest()
+    second = apply_normalization(s)
+    assert second["updated"] == 0
+    assert {k: v for k, v in second.items() if k != "updated"} \
+        == {k: v for k, v in first.items() if k != "updated"}
+    assert hashlib.sha256(db.read_bytes()).hexdigest() == before
+    s.close()
+
+
+# ---- 建置期負向守衛（lab-order-code-normalization T1.1）----
+#
+# 四條全部經 load_entries()（＝build_labs_json.py 的唯一入口）觸發，
+# 證明的是「建置會失敗」而不只是「某個函式會拋」。
+
+
+def test_loose_key_collision_fails(tmp_path):
+    """正規名與別名鬆化後跨條目同鍵 → 建置失敗並指出兩個條目名。"""
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(_entry_yaml(
+        {"normalized_name": "'CA-199'"},
+        {"normalized_name": "'Tumor X'", "aliases": ["CA 199"]},
+    ), encoding="utf-8")
+    with pytest.raises(KnowledgeError, match="別名衝突") as ei:
+        load_entries(bad)
+    assert "CA-199" in str(ei.value) and "Tumor X" in str(ei.value)
+
+
+def test_order_code_duplicate_fails(tmp_path):
+    """同一醫令代碼宣告於兩個條目 → 建置失敗並指出兩個條目名與代碼。"""
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(_entry_yaml(
+        {"normalized_name": "'LDL-C'", "order_codes": ["09044C"]},
+        {"normalized_name": "'HDL-C'", "order_codes": ["09044C"]},
+    ), encoding="utf-8")
+    with pytest.raises(KnowledgeError, match="醫令代碼重複宣告") as ei:
+        load_entries(bad)
+    msg = str(ei.value)
+    assert "LDL-C" in msg and "HDL-C" in msg and "09044C" in msg
+
+
+def test_order_code_bad_format_fails(tmp_path):
+    """代碼非「5 位數字＋1 大寫字母」→ 建置失敗並指出條目名與該代碼。"""
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(_entry_yaml(
+        {"normalized_name": "'LDL-C'", "order_codes": ["09044c00"]},
+    ), encoding="utf-8")
+    with pytest.raises(KnowledgeError, match="醫令代碼格式") as ei:
+        load_entries(bad)
+    assert "LDL-C" in str(ei.value) and "09044c00" in str(ei.value)
+
+
+def test_order_codes_not_list_fails(tmp_path):
+    """order_codes 非字串清單 → 建置失敗並指出條目名。"""
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(_entry_yaml(
+        {"normalized_name": "'LDL-C'", "order_codes": "'09044C'"},
+    ), encoding="utf-8")
+    with pytest.raises(KnowledgeError, match="order_codes") as ei:
+        load_entries(bad)
+    assert "LDL-C" in str(ei.value)
+
+
+def test_match_name_short_alias_exact_only():
+    """短別名只走精確層：N/A、U/A、n.a. 不得誤合成 Na、UA；長鍵仍鬆化。"""
+    entries = load_entries()
+    exact, loose = exact_map(entries), alias_map(entries)
+    assert match_name("Na", exact, loose) == "Sodium"
+    assert match_name(" na ", exact, loose) == "Sodium"
+    assert match_name("K", exact, loose) == "Potassium"
+    assert match_name("N/A", exact, loose) is None
+    assert match_name("n.a.", exact, loose) is None
+    assert match_name("U/A", exact, loose) is None
+    assert match_name("l.d.l. cholesterol ", exact, loose) == "LDL-C"
+    assert exact_key("  ＬＤＬ－Ｃ ") == "LDL-C"
+
+
+def test_loose_key_shape():
+    """鬆化＝NFKC → 大寫 → 移除空白與 - _ . / , 、 ( )。"""
+    assert loose_key("  l.d.l. Cholesterol") == "LDLCHOLESTEROL"
+    assert loose_key("ＬＤＬ－Ｃ") == "LDLC"          # 全形經 NFKC
+    assert loose_key("CA 19-9") == "CA199"
+    assert loose_key("") == "" and loose_key(None) == ""
+
+
+def test_code_map_from_repo_entries():
+    """repo 條目的代碼表可建、且血脂四項各自成碼。"""
+    cm = code_map(load_entries())
+    assert cm["09044C"] == "LDL-C"
+    assert cm["09043C"] == "HDL-C"
+    assert "09015C" not in cm and "09026C" not in cm   # 多項搭車，不宣告
 
 
 def test_forbidden_words_fail(tmp_path):

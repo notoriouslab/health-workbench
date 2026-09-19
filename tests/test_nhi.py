@@ -9,6 +9,7 @@ from src.store.db import Store
 
 FIXTURE = Path(__file__).parent / "fixtures" / "nhi_sample.json"
 CTRL_FIXTURE = Path(__file__).parent / "fixtures" / "nhi_ctrlchar.json"
+LABNORM_FIXTURE = Path(__file__).parent / "fixtures" / "nhi_labnorm.json"
 
 
 @pytest.fixture
@@ -73,6 +74,33 @@ def test_lab_quality_flags(imported):
         "SELECT quality_flags FROM lab_results WHERE test_name_raw='URINE PROTEIN'"
     ).fetchone()[0]
     assert "non_numeric_value" in flags and "missing_ref_range" in flags
+
+
+def test_lab_name_normalization_levels(tmp_path):
+    """三級短路的端到端向量（design D5 表）：匯入後九列逐列相符。
+
+    JS 端同一斷言在 app/tests/adapters/nhi_adapter.test.mjs，
+    兩端對同一 fixture 的全欄位對帳在 app/tests/parity/。
+    """
+    db = tmp_path / "labnorm.sqlite"
+    assert NhiJsonAdapter().import_file(
+        LABNORM_FIXTURE, db_path=db, assume_profile=True) == 0
+    s = Store(db)
+    rows = s.con.execute(
+        "SELECT test_name_raw, test_name_normalized, quality_flags FROM lab_results"
+        " ORDER BY source_index").fetchall()
+    assert [tuple(r) for r in rows] == [
+        ("LDL-C", "LDL-C", ""),                             # 精確命中
+        ("LDL-Cholesterol", "LDL-C", ""),                   # 別名命中
+        ("l.d.l. cholesterol ", "LDL-C", ""),               # 鬆化命中
+        ("LDL Chol", "LDL-C", "mapped_by_code"),            # 名稱不中、代碼後備
+        ("HDL-C", "HDL-C", ""),                             # 名稱優先於代碼
+        ("A1C-X", "HbA1c", "mapped_by_code"),               # 8 碼取前 6
+        ("XYZ", None, "missing_ref_range,unmapped"),        # 多項醫令不後備
+        ("Unknown Thing", None, "unmapped"),                # 無代碼
+        ("ＬＤＬ－Ｃ", "LDL-C", ""),                          # 全形經 NFKC
+    ]
+    s.close()
 
 
 def test_profile_mismatch_abort(imported, capsys):

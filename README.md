@@ -291,8 +291,9 @@ Books 這邊有一點要留意：只要它的 iCloud 同步是開著的（Mac �
 1. **維護解析器**：健康存摺的格式會隨政策微調，需要讓解析保持彈性，
    遇到沒見過的欄位不要整份匯入失敗。相容性回歸由 `tests/fixtures/`
    的合成樣本與 Python 端逐位元組差分對帳把關。
-2. **補充檢驗項目知識庫**：`app/src/knowledge/labs.json` 目前收錄 40 項
-   常見檢驗的官方衛教說明與出處，歡迎擴充（每筆需附官方來源與引用日期）。
+2. **補充檢驗項目知識庫**：`app/src/knowledge/labs.json` 目前收錄 49 項
+   常見檢驗的項目名稱出處與中性說明，歡迎擴充（每筆需附來源與引用日期；
+   單一分析物的醫令可附 order_codes，讓沒見過的院所寫法靠醫令代碼對到）。
 3. **看診與手機閱讀體驗**：匯出檔已針對窄螢幕調整版面，可印的有兩份
    （看診摘要卡與用藥清單，見「印出來帶去看診」）。其他分頁還沒有可以印
    的版面，長輩要把整份紀錄印出來帶去看診的話這塊值得補；圖上的數值目前
@@ -345,8 +346,9 @@ App 的 SQLite 資料庫可供外部工具以唯讀方式（`mode=ro`）查詢�
 - **命令列工具**：`src/`（Python 3.13 標準庫 + PyYAML）自 v0.3 起
   凍結新功能，作為 App 匯入引擎的差分驗收基準。常用：
   `bin/hwb import <檔案>`、`bin/hwb rebuild`、`bin/hwb status`、
-  `bin/hwb knowledge update`（更新藥品品項快取，唯一主動連網的命令）。
-- **測試**：`cd app && npm test`（432 項，含與 Python 的逐位元組
+  `bin/hwb knowledge update`（更新藥品品項快取，唯一主動連網的命令）、
+  `bin/hwb knowledge normalize`（重算檢驗名稱對照，冪等、不連網）。
+- **測試**：`cd app && npm test`（446 項，含與 Python 的逐位元組
   差分對帳、匯入與救援操作的非破壞性紅隊矩陣、檢視器全分頁渲染守衛）；
   `python3 -m pytest tests/`；端到端 `scripts/e2e_idempotency.sh`。
 - **CI**：`.github/workflows/app-build.yml`（測試＋守衛 → 雙平台建置）；

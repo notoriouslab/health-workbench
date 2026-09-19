@@ -51,6 +51,17 @@ def cmd_quality(args):
 
 
 def cmd_knowledge(args):
+    if args.action == "normalize":
+        # 重算為無狀態且冪等：只寫結果有變動的列，第二次跑 updated 必為 0。
+        # 升版後 CLI 使用者用它把舊庫的 unmapped 列補上新別名與代碼後備。
+        from src.knowledge.labs import apply_normalization
+        from src.store.db import Store
+        store = Store(args.db)
+        c = apply_normalization(store)
+        store.close()
+        print(f"mapped={c['mapped']} unmapped={c['unmapped']} "
+              f"mapped_by_code={c['mapped_by_code']} updated={c['updated']}")
+        return 0
     from src.knowledge.drugs import update_cache
     update_cache(args.db, source_items=args.source_items,
                  source_licenses=args.source_licenses)
@@ -88,8 +99,9 @@ def main(argv=None):
     p_status.set_defaults(func=cmd_status)
 
     p_knowledge = sub.add_parser("knowledge", help="knowledge 對照維護")
-    p_knowledge.add_argument("action", choices=["update"],
-                             help="update：下載藥品品項與許可證快取")
+    p_knowledge.add_argument("action", choices=["update", "normalize"],
+                             help="update：下載藥品品項與許可證快取；"
+                                  "normalize：重算檢驗名稱正規化欄位（冪等）")
     p_knowledge.add_argument("--source-items", type=Path, default=None,
                              help="改用本地品項檔 CSV（離線/測試用）")
     p_knowledge.add_argument("--source-licenses", type=Path, default=None,
