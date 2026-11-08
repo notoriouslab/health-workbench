@@ -1,8 +1,8 @@
 """健保存摺醫療類 JSON adapter（nhi-import capability）。
 
-- 14 節區完整解析、節區代碼小寫正規化、「無資料」佔位、未知欄位保留
+- 14 節區識別與保留、節區代碼小寫查找、「無資料」佔位、未知欄位保留
 - 藥局交付調劑日期回退（r1.5 空 → r1.6）
-- 巢狀醫囑（r1_1/r3_1/r9_1）完整入庫＋對帳
+- 巢狀醫囑（r1_1/r2_1/r3_1/r9_1）入庫＋對帳
 - 遮罩身分證歸戶防護、檔案 SHA-256 防重複匯入
 """
 import hashlib
@@ -16,18 +16,44 @@ from src.store.db import Store
 from . import register
 from . import nhi_fieldmap as fm
 
-ADAPTER_VERSION = "1.0.0"
+ADAPTER_VERSION = "1.1.0"
 NO_DATA = "無資料"
 
 # (事件型別, 日期鍵, 院所名, 院所代碼, 診斷碼, 診斷名, 部分負擔, 支付點數, 就醫序號, 欄位表)
 ENCOUNTER_SECTIONS = {
     "r1": ("western_outpatient", "r1.5", "r1.4", "r1.3", "r1.8", "r1.9", "r1.12", "r1.13", "r1.7", fm.R1),
+    "r2": ("inpatient", "r2.5", "r2.4", "r2.3", "r2.10", "r2.11", "r2.14", "r2.15", "r2.9", fm.R2),
     "r3": ("dental", "r3.5", "r3.4", "r3.3", "r3.7", "r3.8", "r3.11", "r3.12", "r3.6", fm.R3),
     "r9": ("tcm", "r9.5", "r9.4", "r9.3", "r9.7", "r9.8", "r9.11", "r9.12", "r9.6", fm.R9),
 }
-KNOWN_FIELDS = {"r1": {**fm.R1, "r1_1": None}, "r3": {**fm.R3, "r3_1": None},
-                "r9": {**fm.R9, "r9_1": None}, "r6": fm.R6, "r7": fm.R7,
-                "r8": fm.R8, "r10": fm.R10, "r11": {**fm.R11, "r11_1": None}}
+KNOWN_FIELDS = {sec: dict(getattr(fm, sec.upper())) for sec in fm.SECTIONS}
+for _sec in ("r1", "r2", "r3", "r9", "r11", "r12", "r13", "r14"):
+    KNOWN_FIELDS[_sec][f"{_sec}_1"] = None
+
+
+def code_keys(record):
+    """Lookup view only: canonical fingerprints always use the original record."""
+    if not isinstance(record, dict):
+        raise ValueError("NHI record must be an object")
+    result = {}
+    for key, value in record.items():
+        normalized = key.lower() if re.fullmatch(r"[rRbB]\d+(?:_\d+)?(?:\.\d+)?", key) else key
+        if normalized in result:
+            raise ValueError(f"Conflicting NHI keys: {normalized}")
+        result[normalized] = value
+    return result
+
+
+def section_rows(value):
+    # The JSON example uses a singleton r3 object despite the table's array.
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
+def detail_rows(value):
+    # XML empty nested elements may be represented as an empty string.
+    return [] if value == "" else section_rows(value)
 
 
 def norm_date(s):
@@ -53,6 +79,7 @@ def to_num(s):
 
 def is_no_data(rows, sec):
     return (isinstance(rows, list) and len(rows) == 1
+            and isinstance(rows[0], dict)
             and list(rows[0].keys()) in ([sec], [sec.upper()])
             and list(rows[0].values())[0] == NO_DATA)
 
@@ -81,7 +108,7 @@ class NhiJsonAdapter:
         # 呈現，TAB 的對齊有意義。JS 版 JSON.parse 無對應開關，以 parseJsonTolerant
         # 達成同語意，兩實作等價性由 app/tests/parity/ 釘住。
         data = json.loads(raw.decode("utf-8-sig"), strict=False)
-        bdata = {k.lower(): v for k, v in data["myhealthbank"]["bdata"].items()}
+        bdata = code_keys(data["myhealthbank"]["bdata"])
         masked_id = (bdata.get("b1.1") or "").strip()
 
         store = Store(db_path)
@@ -97,13 +124,12 @@ class NhiJsonAdapter:
         # 遮罩身分證歸戶防護：
         # 既有已綁定 → 必須完全一致；檔案缺 b1.1 → 中止（檔案異常）；
         # 既有未綁定（如 Apple 先匯入所建）→ 首次健保匯入認領綁定。
+        if not masked_id:
+            print("匯入中止：檔案缺少遮罩身分證（b1.1），無法確認歸戶。", file=sys.stderr)
+            return 3
         row = store.con.execute("SELECT id, masked_id FROM profiles ORDER BY id LIMIT 1").fetchone()
         if row:
             pid, existing_masked = row["id"], row["masked_id"]
-            if not masked_id:
-                print("匯入中止：檔案缺少遮罩身分證（b1.1），無法確認歸戶。",
-                      file=sys.stderr)
-                return 3
             if existing_masked:
                 if existing_masked != masked_id:
                     print(f"匯入中止：檔案遮罩身分證 {masked_id} 與資料庫既有 profile"
@@ -130,6 +156,12 @@ class NhiJsonAdapter:
         sections = {}
         unknown_fields = {}
         parse_errors = []
+        # Additive JSON payload in the existing source row: no schema migration,
+        # no clinical interpretation of ambiguous/unprojected records.
+        retained = {k: v for k, v in bdata.items() if k == "r0" or not re.fullmatch(r"r\d+", k)}
+        failed_records = {}
+        store.stats["nhi_retained"] = retained
+        store.stats["nhi_failed_records"] = failed_records
 
         def guard(sec, i, fn):
             """單筆解析失敗：記錄後續行，NEVER 讓整批中止或靜默丟棄。"""
@@ -137,23 +169,30 @@ class NhiJsonAdapter:
                 fn()
                 return True
             except Exception as e:  # noqa: BLE001 — 逐筆防線，錯誤全記入品質報告
+                failed_records.setdefault(sec, {})[str(i)] = section_rows(bdata.get(sec))[i]
                 parse_errors.append(f"{sec}[{i}] {type(e).__name__}: {e}")
                 return False
 
         def note_unknown(sec, rec):
-            known = KNOWN_FIELDS.get(sec, {})
+            known = KNOWN_FIELDS.get(sec, getattr(fm, sec.upper(), {}))
             extra = {k: v for k, v in rec.items()
-                     if k not in known and not k.endswith("_1") and v not in (None, "")}
+                     if k not in known and v not in (None, "")}
             for k in extra:
                 unknown_fields.setdefault(sec, {})
                 unknown_fields[sec][k] = unknown_fields[sec].get(k, 0) + 1
+            sub_key = f"{sec}_1"
+            if sec in ("r11", "r12", "r13", "r14") and sub_key in rec:
+                children = detail_rows(rec[sub_key])
+                if not is_no_data(children, sub_key):
+                    for child in children:
+                        note_unknown(sub_key, code_keys(child))
             return extra
 
-        # --- 就醫事件（r1/r3/r9）與巢狀醫囑 ---
+        # --- 就醫事件（r1/r2/r3/r9）與巢狀醫囑 ---
         med_expected = 0
         for sec, (etype, dkey, fname_k, fcode_k, dxc_k, dxn_k, copay_k, pts_k, seq_k, fmap) in \
                 ENCOUNTER_SECTIONS.items():
-            rows = bdata.get(sec, [])
+            rows = section_rows(bdata.get(sec))
             if is_no_data(rows, sec):
                 sections[sec] = {"status": "no_data", "records": 0}
                 continue
@@ -163,6 +202,8 @@ class NhiJsonAdapter:
                        fcode_k=fcode_k, dxc_k=dxc_k, dxn_k=dxn_k, copay_k=copay_k,
                        pts_k=pts_k, seq_k=seq_k):
                 nonlocal n_out, med_expected
+                raw_rec = rec
+                rec = code_keys(rec)
                 extra = note_unknown(sec, rec)
                 d = norm_date(rec.get(dkey))
                 rec_type = etype
@@ -173,7 +214,7 @@ class NhiJsonAdapter:
                 if d is None:
                     flags.append("missing_date")
                 result = store.insert_fp_record(
-                    "encounters", rec, profile_id=pid, doc_id=doc_id, section=sec,
+                    "encounters", raw_rec, profile_id=pid, doc_id=doc_id, section=sec,
                     source_index=i, quality_flags=",".join(flags),
                     columns={"type": rec_type, "date": d,
                              "visit_seq": rec.get(seq_k),
@@ -184,32 +225,38 @@ class NhiJsonAdapter:
                              "nhi_points": to_num(rec.get(pts_k)),
                              "extra_json": json.dumps(extra, ensure_ascii=False) if extra else None})
                 sub_key = f"{sec}_1"
-                meds = rec.get(sub_key) or []
+                meds = detail_rows(rec.get(sub_key))
+                if is_no_data(meds, sub_key):
+                    meds = []
                 med_expected += len(meds)
                 if result == "inserted":
                     n_out += 1
                     enc_id = store._last_insert_id
                     for j, med in enumerate(meds):
+                        med = code_keys(med)
+                        note_unknown(sub_key, med)
                         days_key = f"{sub_key}.6" if sec == "r3" else f"{sub_key}.4"
                         store.insert_medication(
                             profile_id=pid, doc_id=doc_id, encounter_id=enc_id,
                             section=f"{sec}>{sub_key}", source_index=j,
-                            order_code=med.get(f"{sub_key}.1"),
-                            order_name=med.get(f"{sub_key}.2"),
-                            total_qty=to_num(med.get(f"{sub_key}.3")),
-                            days_supply=to_num(med.get(days_key)),
+                            order_code=med.get(f"{sub_key}.4" if sec == "r2" else f"{sub_key}.1"),
+                            order_name=med.get(f"{sub_key}.5" if sec == "r2" else f"{sub_key}.2"),
+                            total_qty=to_num(med.get(f"{sub_key}.6" if sec == "r2" else f"{sub_key}.3")),
+                            days_supply=None if sec == "r2" else to_num(med.get(days_key)),
                             tooth_code=med.get(f"{sub_key}.4") if sec == "r3" else None,
                             tooth_name=med.get(f"{sub_key}.5") if sec == "r3" else None)
               guard(sec, i, _one)
             sections[sec] = {"status": "parsed", "records": len(rows), "inserted": n_out}
 
         # --- r7 檢驗 ---
-        rows = bdata.get("r7", [])
+        rows = section_rows(bdata.get("r7"))
         if is_no_data(rows, "r7"):
             sections["r7"] = {"status": "no_data", "records": 0}
         else:
             for i, rec in enumerate(rows):
               def _one(rec=rec, i=i):
+                raw_rec = rec
+                rec = code_keys(rec)
                 note_unknown("r7", rec)
                 vt = rec.get("r7.11")
                 vnum = to_num(vt)
@@ -221,7 +268,7 @@ class NhiJsonAdapter:
                 if rec.get("r7.12") in (None, ""):
                     flags.append("missing_ref_range")
                 store.insert_fp_record(
-                    "lab_results", rec, profile_id=pid, doc_id=doc_id, section="r7",
+                    "lab_results", raw_rec, profile_id=pid, doc_id=doc_id, section="r7",
                     source_index=i, quality_flags=",".join(flags),
                     columns={"visit_date": norm_date(rec.get("r7.5")),
                              "test_date": norm_date(rec.get("r7.6")),
@@ -234,15 +281,17 @@ class NhiJsonAdapter:
             sections["r7"] = {"status": "parsed", "records": len(rows)}
 
         # --- r8 影像病理 ---
-        rows = bdata.get("r8", [])
+        rows = section_rows(bdata.get("r8"))
         if is_no_data(rows, "r8"):
             sections["r8"] = {"status": "no_data", "records": 0}
         else:
             for i, rec in enumerate(rows):
               def _one(rec=rec, i=i):
+                raw_rec = rec
+                rec = code_keys(rec)
                 note_unknown("r8", rec)
                 store.insert_fp_record(
-                    "reports", rec, profile_id=pid, doc_id=doc_id, section="r8",
+                    "reports", raw_rec, profile_id=pid, doc_id=doc_id, section="r8",
                     source_index=i,
                     columns={"visit_date": norm_date(rec.get("r8.5")),
                              "test_date": norm_date(rec.get("r8.6")),
@@ -253,15 +302,17 @@ class NhiJsonAdapter:
             sections["r8"] = {"status": "parsed", "records": len(rows)}
 
         # --- r6 疫苗 ---
-        rows = bdata.get("r6", [])
+        rows = section_rows(bdata.get("r6"))
         if is_no_data(rows, "r6"):
             sections["r6"] = {"status": "no_data", "records": 0}
         else:
             for i, rec in enumerate(rows):
               def _one(rec=rec, i=i):
+                raw_rec = rec
+                rec = code_keys(rec)
                 note_unknown("r6", rec)
                 store.insert_fp_record(
-                    "immunizations", rec, profile_id=pid, doc_id=doc_id, section="r6",
+                    "immunizations", raw_rec, profile_id=pid, doc_id=doc_id, section="r6",
                     source_index=i,
                     columns={"date": norm_date(rec.get("r6.1")),
                              "vaccine_name": rec.get("r6.3"),
@@ -270,15 +321,18 @@ class NhiJsonAdapter:
             sections["r6"] = {"status": "parsed", "records": len(rows)}
 
         # --- r10 成健 ---
-        rows = bdata.get("r10", [])
+        rows = section_rows(bdata.get("r10"))
         if is_no_data(rows, "r10"):
             sections["r10"] = {"status": "no_data", "records": 0}
         else:
             for i, rec in enumerate(rows):
               def _one(rec=rec, i=i):
+                raw_rec = rec
+                rec = code_keys(rec)
+                note_unknown("r10", rec)
                 extra = {fm.R10.get(k, k): v for k, v in rec.items() if v not in (None, "")}
                 store.insert_fp_record(
-                    "body_measurements", rec, profile_id=pid, doc_id=doc_id,
+                    "body_measurements", raw_rec, profile_id=pid, doc_id=doc_id,
                     section="r10", source_index=i,
                     columns={"check_date": norm_date(rec.get("r10.5")),
                              "height_cm": to_num(rec.get("r10.6")),
@@ -292,34 +346,48 @@ class NhiJsonAdapter:
             sections["r10"] = {"status": "parsed", "records": len(rows)}
 
         # --- r11 癌篩 ---
-        rows = bdata.get("r11", [])
+        rows = section_rows(bdata.get("r11"))
         if is_no_data(rows, "r11"):
             sections["r11"] = {"status": "no_data", "records": 0}
         else:
             for i, rec in enumerate(rows):
               def _one(rec=rec, i=i):
+                raw_rec = rec
+                rec = code_keys(rec)
                 note_unknown("r11", rec)
                 store.insert_fp_record(
-                    "cancer_screenings", rec, profile_id=pid, doc_id=doc_id,
+                    "cancer_screenings", raw_rec, profile_id=pid, doc_id=doc_id,
                     section="r11", source_index=i,
                     columns={"category": rec.get("r11.1"), "item_name": rec.get("r11.2"),
-                             "detail_json": json.dumps(rec.get("r11_1", []), ensure_ascii=False)})
+                             "detail_json": json.dumps(
+                                 [code_keys(child) for child in detail_rows(rec.get("r11_1"))],
+                                 ensure_ascii=False)})
               guard("r11", i, _one)
             sections["r11"] = {"status": "parsed", "records": len(rows)}
 
         # --- 其餘節區與未知節區 ---
-        for sec in ["r2", "r4", "r5", "r12", "r13", "r14"]:
-            rows = bdata.get(sec, [])
+        for sec in ["r4", "r5", "r12", "r13", "r14"]:
+            rows = section_rows(bdata.get(sec))
             if is_no_data(rows, sec):
                 sections[sec] = {"status": "no_data", "records": 0}
             elif rows:
+                retained[sec] = bdata[sec]
+                for i, rec in enumerate(rows):
+                    guard(sec, i, lambda rec=rec: note_unknown(sec, code_keys(rec)))
                 sections[sec] = {"status": "UNPARSED_HAS_DATA", "records": len(rows)}
+                if sec == "r14":
+                    sections[sec]["note"] = "官方對照表與範例的 r14_1.6～.9 不一致；僅保留原值"
         known_secs = set(ENCOUNTER_SECTIONS) | {"r0", "r2", "r4", "r5", "r6", "r7", "r8",
                                                 "r10", "r11", "r12", "r13", "r14",
-                                                "b1.1", "b1.2"}
+                                                "b1.1", "b1.2", "b2.1"}
         for sec in bdata:
             if sec not in known_secs:
-                sections[sec] = {"status": "UNKNOWN_SECTION", "records": len(bdata[sec])}
+                retained[sec] = bdata[sec]
+                sections[sec] = {"status": "UNKNOWN_SECTION", "records": len(section_rows(bdata[sec]))}
+
+        for sec in fm.SECTIONS:
+            if sec not in bdata or bdata[sec] is None:
+                sections[sec] = {"status": "no_data", "records": 0, "note": "來源未提供此節區"}
 
         # 醫囑對帳（重複匯入時 inserted 為 0 屬正常，僅首次驗證）
         # 檢驗名稱正規化（D5）：依 labs.yaml 別名表重算全部 lab_results

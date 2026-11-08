@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -8,7 +9,7 @@ import { nhiXmlAdapter, xmlToBdata } from "../../src/adapters/nhi_xml.js";
 import { nhiJsonAdapter } from "../../src/adapters/nhi_json.js";
 import { createRegistry } from "../../src/adapters/registry.js";
 
-const REPO = new URL("../../..", import.meta.url).pathname;
+const REPO = fileURLToPath(new URL("../../..", import.meta.url));
 const JSON_FIXTURE = `${REPO}/tests/fixtures/nhi_sample.json`;
 const LAB_ENTRIES = JSON.parse(
   readFileSync(new URL("../../src/knowledge/labs.json", import.meta.url), "utf-8"));
@@ -23,7 +24,7 @@ function jsonToXml(data) {
   const parts = ["﻿<?xml version=\"1.0\" encoding=\"utf-8\"?>", "<myhealthbank>", " <bdata>"];
   const leaf = (tag, v) => `  <${tag}>${esc(v)}</${tag}>`;
   for (const [sec, rows] of Object.entries(bdata)) {
-    if (/^r(9|1[0-4])$/i.test(sec)) continue; // XML 格式事實：無 r9-r14（官方 R12-R14 大寫）
+    if (/^r(9|1[0-4])$/i.test(sec)) continue; // Legacy partial-export fixture; not a format limitation.
     if (!Array.isArray(rows)) { parts.push(leaf(sec, rows)); continue; }
     const keys = Object.keys(rows[0] ?? {});
     if (rows.length === 1 && keys.length === 1 && (keys[0] === sec)) {
@@ -62,7 +63,7 @@ async function freshDriver() {
   return d;
 }
 
-// 只比 JSON/XML 共同節區（r1-r8）；r9-r14 為 XML 格式缺漏，不在對帳範圍
+// Legacy partial-export fixture: compare the sections actually supplied.
 const COMMON_SECTION = /^(r[1-8])(>|$)/;
 async function dumpTables(d) {
   const out = {};
@@ -134,7 +135,7 @@ test("同批 JSON/XML 交叉對帳：共同節區全等，差異僅 r8 報告換
   assert.ok(whitelisted >= 1, "白名單案例應至少出現一次（r8.10 換行插入）");
 });
 
-test("XML 節區缺漏事實：r9-r14 標記 no_data 並註明格式", async () => {
+test("XML 未提供節區：r9-r14 標記 no_data 並註明來源缺少", async () => {
   const data = JSON.parse(readFileSync(JSON_FIXTURE, "utf-8"));
   const d = await freshDriver();
   const r = await nhiXmlAdapter.importSource(
@@ -142,7 +143,7 @@ test("XML 節區缺漏事實：r9-r14 標記 no_data 並註明格式", async () 
     d, null, { labEntries: LAB_ENTRIES, profileId: d.pid });
   for (const sec of ["r9", "r10", "r11", "r12", "r13", "r14"]) {
     assert.equal(r.report.sections[sec].status, "no_data", sec);
-    assert.equal(r.report.sections[sec].note, "XML 格式無此節區", sec);
+    assert.equal(r.report.sections[sec].note, "來源未提供此節區", sec);
   }
   await d.close();
 });

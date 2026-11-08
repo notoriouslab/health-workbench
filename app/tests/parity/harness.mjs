@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 // 差分對帳 harness（design D3 / app-import-engine spec 等價協定）。
 // 同一組輸入檔分別經 Python adapter 與 JS 引擎匯入兩個空庫，
 // 逐表 dump（外鍵解析為參照列自然鍵、排除時間戳）diff 全等才 PASS；
@@ -13,7 +14,7 @@ import { nhiXmlAdapter } from "../../src/adapters/nhi_xml.js";
 import { appleHealthAdapter } from "../../src/adapters/apple_health.js";
 import { nodeFileSource } from "../helpers/node_source.mjs";
 
-export const REPO = new URL("../../..", import.meta.url).pathname;
+export const REPO = fileURLToPath(new URL("../../..", import.meta.url));
 const LAB_ENTRIES = JSON.parse(
   readFileSync(new URL("../../src/knowledge/labs.json", import.meta.url), "utf-8"));
 
@@ -42,7 +43,7 @@ export function runPythonImports(files, dbPath) {
     "    assert rc == 0, f'{f} rc={rc}'",
     "print(json.dumps(reports, ensure_ascii=False, default=str))",
   ].join("\n");
-  const out = execFileSync("python3", ["-c", script, dbPath, JSON.stringify(files)],
+  const out = execFileSync(process.env.PYTHON || "python3", ["-c", script, dbPath, JSON.stringify(files)],
     { cwd: REPO, encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 });
   return JSON.parse(out.trim().split("\n").at(-1));
 }

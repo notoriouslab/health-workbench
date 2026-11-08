@@ -1,11 +1,11 @@
-// 健保存摺醫療類 XML adapter（app-import-engine spec：r1-r8 與 JSON 版
-// 等價入庫、r8 報告保留原始換行、r9-r14 標記格式事實）。
+// 健保存摺醫療類 XML adapter（app-import-engine spec：r1-r14 與 JSON 版
+// 等價入庫、r8 報告保留原始換行、缺少節區標記來源未提供）。
 // 解析結果轉成 JSON 版 bdata 形狀後走 nhi_json.js 的共用匯入核心，
 // 確保兩格式的欄位對照、指紋、防護行為零分叉。
 import { importNhiBdata, stripBom } from "./nhi_json.js";
 import { sha256Hex } from "../engine/fingerprint.js";
 
-export const ADAPTER_VERSION = "1.0.0";
+export const ADAPTER_VERSION = "1.1.0";
 
 const ENT = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&apos;": "'" };
 const decodeEntities = (s) =>

@@ -65,6 +65,7 @@
 
   const TYPE_META = {
     western_outpatient: ["西醫門診", "var(--s1)"],
+    inpatient: ["住院", "var(--s1)"],
     tcm: ["中醫門診", "var(--s2)"],
     dental: ["牙醫門診", "var(--s3)"],
     pharmacy_dispensing: ["藥局調劑", "var(--s4)"],

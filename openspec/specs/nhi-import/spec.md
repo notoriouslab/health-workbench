@@ -2,24 +2,31 @@
 
 ## Purpose
 
-健保個人健康存摺資料的匯入：14 節區完整解析、藥局交付調劑日期回退、
+健保個人健康存摺資料的匯入：14 節區識別與保留、藥局交付調劑日期回退、
 巢狀醫囑明細完整入庫、遮罩身分證歸戶，以及檔案指紋防重複匯入
 （change mvp-core-dashboard，2026-08-09）。
 
 ## Requirements
 
-### Requirement: 14 節區完整解析
-系統 SHALL 解析健康存摺醫療類 JSON 的全部節區（b1.1/b1.2 與 r1～r14），
-節區代碼 MUST 先正規化為小寫（原始檔 r1～r11 小寫、R12～R14 大寫混用）。
+### Requirement: 14 節區識別與原值保留
+系統 SHALL 識別健康存摺醫療類 JSON 的全部節區（b1.1、b1.2／b2.1 與 r1～r14），
+以 2023-05-15 J2/X2 規格為依據。節區與欄位代碼 SHALL 以小寫查找，
+但 MUST 保持原始紀錄 canonical 及指紋演算法；同層大小寫衝突鍵 MUST NOT 靜默覆蓋。
+申請日期 b1.2 與 b2.1 MUST 同時保留，不推斷文件矛盾中的唯一正解。
 「無資料」佔位節區（`[{"rN": "無資料"}]`）SHALL 記入品質報告為 no_data，
-MUST NOT 產生資料列。未知的新節區或未知欄位 MUST 保留於 extra_json
-並記入品質報告，MUST NOT 靜默丟棄。
+MUST NOT 產生資料列。省略、null、空陣列 SHALL 被接受；單筆物件 SHALL 視為一筆。
+未知欄位 MUST 保留於 canonical（就醫事件並保留 extra_json）並記入品質報告。
+未知節區以及尚未投影的 r4/r5/r12/r13/r14 MUST 完整保留於
+`source_documents.import_stats.nhi_retained`，包含所有巢狀明細；
+後五者 SHALL 誠實標記 UNPARSED_HAS_DATA，MUST NOT 聲稱已有專用臨床顯示。
+逐筆解析失敗 MUST 記錄 parse_errors 並把原紀錄保存於
+`import_stats.nhi_failed_records[section][source_index]`，MUST NOT 靜默丟棄。
 
 #### Scenario: 完整檔案匯入
 - **WHEN** 匯入一份含 r1(63)/r3(2)/r6(4)/r7(68)/r8(7)/r9(15)/r10(1)/r11(2)
   且 r2/r4/r5/r12/r13/r14 為無資料的下載檔
 - **THEN** 各節區筆數與品質報告一致，無資料節區標記 no_data，
-  總就醫事件 = r1+r3+r9 筆數
+  總就醫事件 = r1+r2+r3+r9 筆數（本例 r2 為無資料）
 
 #### Scenario: 未知欄位保留
 - **WHEN** 某 r1 紀錄含 spec 未定義的欄位 r1.99
@@ -56,13 +63,26 @@ code:
 
 ---
 ### Requirement: 巢狀醫囑明細完整入庫
-系統 SHALL 解析 r1_1（西醫醫囑）、r3_1（牙醫醫囑，含牙位欄）、
+系統 SHALL 解析 r1_1（西醫醫囑）、r2_1（住院醫囑）、r3_1（牙醫醫囑，含牙位欄）、
 r9_1（中醫醫囑）為用藥/處置明細，每筆 MUST 關聯所屬就醫事件。
 匯入完成後明細總數 MUST 與原始檔逐節區加總相等（對帳驗證）。
 
 #### Scenario: 醫囑對帳
-- **WHEN** 原始檔 r1_1+r3_1+r9_1 合計 N 筆用藥
+- **WHEN** 原始檔 r1_1+r2_1+r3_1+r9_1 合計 N 筆有效醫囑
 - **THEN** medications 表恰好新增 N 筆且每筆 encounter_id 有效
+
+#### Scenario: 住院醫囑欄位不沿用門診位置
+- **WHEN** r2_1.1 為序號、.2/.3 為執行期間、.4/.5/.6 為代碼／名稱／總量
+- **THEN** medications 使用 .4/.5/.6，days_supply 為 null；原序號與期間保留於父事件 canonical
+
+#### Scenario: 官方欄位差異
+- **WHEN** r10.14=180、r10.15=90
+- **THEN** 分別標示總膽固醇與三酸甘油酯，不得交換
+- **WHEN** r14_1.6～.9 有值
+- **THEN** 保存原代碼／原值並註明對照表與範例不一致，不推測檢查名稱或平移數值
+
+格式證據、PDF 頁碼、儲存契約與歷史資料限制見
+[`docs/specs/nhi-format-20230515.md`](../../../docs/specs/nhi-format-20230515.md)。
 
 
 <!-- @trace
