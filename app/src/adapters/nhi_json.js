@@ -9,23 +9,42 @@ import { pyJsonDumps, sha256Hex } from "../engine/fingerprint.js";
 import { buildIncremental } from "../engine/quality_report.js";
 import { applyNormalization } from "../knowledge/labs.js";
 
-export const ADAPTER_VERSION = "1.0.0";
+export const ADAPTER_VERSION = "1.1.0";
 const NO_DATA = "無資料";
 
 // (事件型別, 日期鍵, 院所名, 院所代碼, 診斷碼, 診斷名, 部分負擔, 支付點數, 就醫序號, 欄位表)
 const ENCOUNTER_SECTIONS = {
   r1: ["western_outpatient", "r1.5", "r1.4", "r1.3", "r1.8", "r1.9", "r1.12", "r1.13", "r1.7", fm.R1],
+  r2: ["inpatient", "r2.5", "r2.4", "r2.3", "r2.10", "r2.11", "r2.14", "r2.15", "r2.9", fm.R2],
   r3: ["dental", "r3.5", "r3.4", "r3.3", "r3.7", "r3.8", "r3.11", "r3.12", "r3.6", fm.R3],
   r9: ["tcm", "r9.5", "r9.4", "r9.3", "r9.7", "r9.8", "r9.11", "r9.12", "r9.6", fm.R9],
 };
-const KNOWN_FIELDS = {
-  r1: { ...fm.R1, r1_1: null }, r3: { ...fm.R3, r3_1: null },
-  r9: { ...fm.R9, r9_1: null }, r6: fm.R6, r7: fm.R7,
-  r8: fm.R8, r10: fm.R10, r11: { ...fm.R11, r11_1: null },
-};
+const KNOWN_FIELDS = Object.fromEntries(Object.keys(fm.SECTIONS)
+  .map(sec => [sec, { ...fm[sec.toUpperCase()] }]));
+for (const sec of ["r1", "r2", "r3", "r9", "r11", "r12", "r13", "r14"]) {
+  KNOWN_FIELDS[sec][`${sec}_1`] = null;
+}
+
+// Lookup only: never change the original record used for canonical/fingerprint.
+export function codeKeys(record) {
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    throw new Error("NHI record must be an object");
+  }
+  const out = {};
+  for (const [key, value] of Object.entries(record)) {
+    const normalized = /^[rb]\d+(?:_\d+)?(?:\.\d+)?$/i.test(key) ? key.toLowerCase() : key;
+    if (Object.hasOwn(out, normalized)) throw new Error(`Conflicting NHI keys: ${normalized}`);
+    Object.defineProperty(out, normalized, { value, enumerable: true, writable: true, configurable: true });
+  }
+  return out;
+}
+
+const sectionRows = value => value == null ? [] : Array.isArray(value) ? value : [value];
+const detailRows = value => value === "" ? [] : sectionRows(value);
 
 function isNoData(rows, sec) {
   if (!Array.isArray(rows) || rows.length !== 1) return false;
+  if (!rows[0] || typeof rows[0] !== "object" || Array.isArray(rows[0])) return false;
   const keys = Object.keys(rows[0]);
   return (keys.length === 1 && (keys[0] === sec || keys[0] === sec.toUpperCase())
     && rows[0][keys[0]] === NO_DATA);
@@ -95,8 +114,7 @@ export const nhiJsonAdapter = {
   async importSource(source, driver, progress, opts = {}) {
     const data = parseJsonTolerant(
       stripBom(new TextDecoder("utf-8").decode(source.bytes)));
-    const bdata = Object.fromEntries(
-      Object.entries(data.myhealthbank.bdata).map(([k, v]) => [k.toLowerCase(), v]));
+    const bdata = codeKeys(data.myhealthbank.bdata);
     return importNhiBdata(bdata, {
       name: source.name, sha256: await sha256Hex(source.bytes),
       adapter: "nhi_json",
@@ -110,6 +128,7 @@ export const nhiJsonAdapter = {
 // app-import-engine spec；缺省或失效即錯，NEVER 回退第一個成員）
 // 回傳 { status: "ok"|"aborted"|"skipped_duplicate", messages, report? }
 export async function importNhiBdata(bdata, meta, driver, progress, opts = {}) {
+  bdata = codeKeys(bdata);
   const messages = [];
   const sha256 = meta.sha256;
   const maskedId = (bdata["b1.1"] || "").trim();
@@ -161,6 +180,11 @@ export async function importNhiBdata(bdata, meta, driver, progress, opts = {}) {
       const sections = {};
       const unknownFields = {};
       const parseErrors = [];
+      // Additive payload on the existing source row; no schema migration.
+      const retained = Object.fromEntries(Object.entries(bdata).filter(([k]) => k === "r0" || !/^r\d+$/.test(k)));
+      const failedRecords = {};
+      store.stats.nhi_retained = retained;
+      store.stats.nhi_failed_records = failedRecords;
 
       const guard = async (sec, i, fn) => {
         // 單筆解析失敗：記錄後續行，NEVER 讓整批中止或靜默丟棄
@@ -169,37 +193,46 @@ export async function importNhiBdata(bdata, meta, driver, progress, opts = {}) {
           return true;
         } catch (e) {
           if (e instanceof AbortImport) throw e;
+          (failedRecords[sec] ??= {})[String(i)] = sectionRows(bdata[sec])[i];
           parseErrors.push(`${sec}[${i}] ${e.name}: ${e.message}`);
           return false;
         }
       };
 
       const noteUnknown = (sec, rec) => {
-        const known = KNOWN_FIELDS[sec] || {};
+        const known = KNOWN_FIELDS[sec] || fm[sec.toUpperCase()] || {};
         const extra = {};
         for (const [k, v] of Object.entries(rec)) {
-          if (!(k in known) && !k.endsWith("_1") && v !== null && v !== "" && v !== undefined) {
+          if (!Object.hasOwn(known, k) && v !== null && v !== "" && v !== undefined) {
             extra[k] = v;
             unknownFields[sec] = unknownFields[sec] || {};
             unknownFields[sec][k] = (unknownFields[sec][k] || 0) + 1;
           }
         }
+        const subKey = `${sec}_1`;
+        if (["r11", "r12", "r13", "r14"].includes(sec) && Object.hasOwn(rec, subKey)) {
+          const children = detailRows(rec[subKey]);
+          if (!isNoData(children, subKey)) {
+            for (const child of children) noteUnknown(subKey, codeKeys(child));
+          }
+        }
         return extra;
       };
 
-      // --- 就醫事件（r1/r3/r9）與巢狀醫囑 ---
+      // --- 就醫事件（r1/r2/r3/r9）與巢狀醫囑 ---
       let medExpected = 0;
       for (const [sec, [etype, dkey, fnameK, fcodeK, dxcK, dxnK, copayK, ptsK, seqK]]
         of Object.entries(ENCOUNTER_SECTIONS)) {
-        const rows = bdata[sec] || [];
+        const rows = sectionRows(bdata[sec]);
         if (isNoData(rows, sec)) {
           sections[sec] = { status: "no_data", records: 0 };
           continue;
         }
         let nOut = 0;
         for (let i = 0; i < rows.length; i++) {
-          const rec = rows[i];
+          const rawRec = rows[i];
           await guard(sec, i, async () => {
+            const rec = codeKeys(rawRec);
             const extra = noteUnknown(sec, rec);
             let d = normDate(rec[dkey]);
             let recType = etype;
@@ -209,7 +242,7 @@ export async function importNhiBdata(bdata, meta, driver, progress, opts = {}) {
               recType = "pharmacy_dispensing";
             }
             if (d === null) flags.push("missing_date");
-            const result = await store.insertFpRecord("encounters", rec, {
+            const result = await store.insertFpRecord("encounters", rawRec, {
               profileId: pid, docId, section: sec, sourceIndex: i,
               qualityFlags: flags.join(","),
               columns: { type: recType, date: d,
@@ -222,21 +255,23 @@ export async function importNhiBdata(bdata, meta, driver, progress, opts = {}) {
                   ? pyJsonDumps(extra, { sortKeys: false }) : null },
             });
             const subKey = `${sec}_1`;
-            const meds = rec[subKey] || [];
+            const nested = detailRows(rec[subKey]);
+            const meds = isNoData(nested, subKey) ? [] : nested;
             medExpected += meds.length;
             if (result === "inserted") {
               nOut += 1;
               const encId = store.lastInsertId;
               for (let j = 0; j < meds.length; j++) {
-                const med = meds[j];
+                const med = codeKeys(meds[j]);
+                noteUnknown(subKey, med);
                 const daysKey = sec === "r3" ? `${subKey}.6` : `${subKey}.4`;
                 await store.insertMedication({
                   profileId: pid, docId, encounterId: encId,
                   section: `${sec}>${subKey}`, sourceIndex: j,
-                  order_code: med[`${subKey}.1`] ?? null,
-                  order_name: med[`${subKey}.2`] ?? null,
-                  total_qty: toNum(med[`${subKey}.3`]),
-                  days_supply: toNum(med[daysKey]),
+                  order_code: med[sec === "r2" ? `${subKey}.4` : `${subKey}.1`] ?? null,
+                  order_name: med[sec === "r2" ? `${subKey}.5` : `${subKey}.2`] ?? null,
+                  total_qty: toNum(med[sec === "r2" ? `${subKey}.6` : `${subKey}.3`]),
+                  days_supply: sec === "r2" ? null : toNum(med[daysKey]),
                   tooth_code: sec === "r3" ? (med[`${subKey}.4`] ?? null) : null,
                   tooth_name: sec === "r3" ? (med[`${subKey}.5`] ?? null) : null,
                 });
@@ -249,13 +284,14 @@ export async function importNhiBdata(bdata, meta, driver, progress, opts = {}) {
 
       // --- r7 檢驗 ---
       {
-        const rows = bdata.r7 || [];
+        const rows = sectionRows(bdata.r7);
         if (isNoData(rows, "r7")) {
           sections.r7 = { status: "no_data", records: 0 };
         } else {
           for (let i = 0; i < rows.length; i++) {
-            const rec = rows[i];
+            const rawRec = rows[i];
             await guard("r7", i, async () => {
+              const rec = codeKeys(rawRec);
               noteUnknown("r7", rec);
               const vt = rec["r7.11"];
               const vnum = toNum(vt);
@@ -265,7 +301,7 @@ export async function importNhiBdata(bdata, meta, driver, progress, opts = {}) {
               if (rec["r7.12"] === null || rec["r7.12"] === "" || rec["r7.12"] === undefined) {
                 flags.push("missing_ref_range");
               }
-              await store.insertFpRecord("lab_results", rec, {
+              await store.insertFpRecord("lab_results", rawRec, {
                 profileId: pid, docId, section: "r7", sourceIndex: i,
                 qualityFlags: flags.join(","),
                 columns: { visit_date: normDate(rec["r7.5"]), test_date: normDate(rec["r7.6"]),
@@ -283,15 +319,16 @@ export async function importNhiBdata(bdata, meta, driver, progress, opts = {}) {
 
       // --- r8 影像病理 ---
       {
-        const rows = bdata.r8 || [];
+        const rows = sectionRows(bdata.r8);
         if (isNoData(rows, "r8")) {
           sections.r8 = { status: "no_data", records: 0 };
         } else {
           for (let i = 0; i < rows.length; i++) {
-            const rec = rows[i];
+            const rawRec = rows[i];
             await guard("r8", i, async () => {
+              const rec = codeKeys(rawRec);
               noteUnknown("r8", rec);
-              await store.insertFpRecord("reports", rec, {
+              await store.insertFpRecord("reports", rawRec, {
                 profileId: pid, docId, section: "r8", sourceIndex: i,
                 columns: { visit_date: normDate(rec["r8.5"]), test_date: normDate(rec["r8.6"]),
                   facility_name: rec["r8.4"] ?? null,
@@ -306,15 +343,16 @@ export async function importNhiBdata(bdata, meta, driver, progress, opts = {}) {
 
       // --- r6 疫苗 ---
       {
-        const rows = bdata.r6 || [];
+        const rows = sectionRows(bdata.r6);
         if (isNoData(rows, "r6")) {
           sections.r6 = { status: "no_data", records: 0 };
         } else {
           for (let i = 0; i < rows.length; i++) {
-            const rec = rows[i];
+            const rawRec = rows[i];
             await guard("r6", i, async () => {
+              const rec = codeKeys(rawRec);
               noteUnknown("r6", rec);
-              await store.insertFpRecord("immunizations", rec, {
+              await store.insertFpRecord("immunizations", rawRec, {
                 profileId: pid, docId, section: "r6", sourceIndex: i,
                 columns: { date: normDate(rec["r6.1"]),
                   vaccine_name: rec["r6.3"] ?? null,
@@ -328,18 +366,20 @@ export async function importNhiBdata(bdata, meta, driver, progress, opts = {}) {
 
       // --- r10 成健 ---
       {
-        const rows = bdata.r10 || [];
+        const rows = sectionRows(bdata.r10);
         if (isNoData(rows, "r10")) {
           sections.r10 = { status: "no_data", records: 0 };
         } else {
           for (let i = 0; i < rows.length; i++) {
-            const rec = rows[i];
+            const rawRec = rows[i];
             await guard("r10", i, async () => {
+              const rec = codeKeys(rawRec);
+              noteUnknown("r10", rec);
               const extra = {};
               for (const [k, v] of Object.entries(rec)) {
                 if (v !== null && v !== "" && v !== undefined) extra[fm.R10[k] ?? k] = v;
               }
-              await store.insertFpRecord("body_measurements", rec, {
+              await store.insertFpRecord("body_measurements", rawRec, {
                 profileId: pid, docId, section: "r10", sourceIndex: i,
                 columns: { check_date: normDate(rec["r10.5"]),
                   height_cm: toNum(rec["r10.6"]), weight_kg: toNum(rec["r10.7"]),
@@ -355,18 +395,19 @@ export async function importNhiBdata(bdata, meta, driver, progress, opts = {}) {
 
       // --- r11 癌篩 ---
       {
-        const rows = bdata.r11 || [];
+        const rows = sectionRows(bdata.r11);
         if (isNoData(rows, "r11")) {
           sections.r11 = { status: "no_data", records: 0 };
         } else {
           for (let i = 0; i < rows.length; i++) {
-            const rec = rows[i];
+            const rawRec = rows[i];
             await guard("r11", i, async () => {
+              const rec = codeKeys(rawRec);
               noteUnknown("r11", rec);
-              await store.insertFpRecord("cancer_screenings", rec, {
+              await store.insertFpRecord("cancer_screenings", rawRec, {
                 profileId: pid, docId, section: "r11", sourceIndex: i,
                 columns: { category: rec["r11.1"] ?? null, item_name: rec["r11.2"] ?? null,
-                  detail_json: pyJsonDumps(rec.r11_1 ?? [], { sortKeys: false }) },
+                  detail_json: pyJsonDumps(detailRows(rec.r11_1).map(codeKeys), { sortKeys: false }) },
               });
             });
           }
@@ -375,25 +416,33 @@ export async function importNhiBdata(bdata, meta, driver, progress, opts = {}) {
       }
 
       // --- 其餘節區與未知節區 ---
-      for (const sec of ["r2", "r4", "r5", "r12", "r13", "r14"]) {
-        const rows = bdata[sec] || [];
+      for (const sec of ["r4", "r5", "r12", "r13", "r14"]) {
+        const rows = sectionRows(bdata[sec]);
         if (isNoData(rows, sec)) sections[sec] = { status: "no_data", records: 0 };
-        else if (rows.length) sections[sec] = { status: "UNPARSED_HAS_DATA", records: rows.length };
+        else if (rows.length) {
+          retained[sec] = bdata[sec];
+          for (let i = 0; i < rows.length; i++) {
+            await guard(sec, i, async () => noteUnknown(sec, codeKeys(rows[i])));
+          }
+          sections[sec] = { status: "UNPARSED_HAS_DATA", records: rows.length };
+          if (sec === "r14") {
+            sections[sec].note = "官方對照表與範例的 r14_1.6～.9 不一致；僅保留原值";
+          }
+        }
       }
       const knownSecs = new Set([...Object.keys(ENCOUNTER_SECTIONS), "r0", "r2", "r4", "r5",
-        "r6", "r7", "r8", "r10", "r11", "r12", "r13", "r14", "b1.1", "b1.2"]);
+        "r6", "r7", "r8", "r10", "r11", "r12", "r13", "r14", "b1.1", "b1.2", "b2.1"]);
       for (const sec of Object.keys(bdata)) {
         if (!knownSecs.has(sec)) {
-          sections[sec] = { status: "UNKNOWN_SECTION", records: bdata[sec].length };
+          retained[sec] = bdata[sec];
+          sections[sec] = { status: "UNKNOWN_SECTION", records: sectionRows(bdata[sec]).length };
         }
       }
 
-      // XML 官方格式無 r9-r14（格式事實，非資料異常）
-      if (meta.formatVariant === "xml") {
-        for (const sec of ["r9", "r10", "r11", "r12", "r13", "r14"]) {
-          if (!(sec in bdata)) {
-            sections[sec] = { status: "no_data", records: 0, note: "XML 格式無此節區" };
-          }
+      // Both official formats define all fourteen sections. Absence is a file fact.
+      for (const sec of Object.keys(fm.SECTIONS)) {
+        if (!(sec in bdata) || bdata[sec] === null) {
+          sections[sec] = { status: "no_data", records: 0, note: "來源未提供此節區" };
         }
       }
 
