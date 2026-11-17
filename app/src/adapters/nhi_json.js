@@ -139,7 +139,7 @@ export const nhiJsonAdapter = {
   async importSource(source, driver, progress, opts = {}) {
     const data = parseJsonTolerant(
       stripBom(new TextDecoder("utf-8").decode(source.bytes)));
-    const bdata = codeKeys(data.myhealthbank.bdata);
+    const bdata = data.myhealthbank.bdata; // 正規化在 importNhiBdata 開頭做一次
     return importNhiBdata(bdata, {
       name: source.name, sha256: await sha256Hex(source.bytes),
       adapter: "nhi_json",

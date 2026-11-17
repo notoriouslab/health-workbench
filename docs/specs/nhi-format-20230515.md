@@ -88,3 +88,10 @@ node --test app/tests/adapters/nhi_official.test.mjs app/tests/adapters/nhi_xml.
 
 非 `python3` 環境可用 `PYTHON` 指定 Python 執行檔。NHI 測試路徑使用
 `fileURLToPath`，可處理 Windows 與含中文的資料夾名稱。
+
+## 無官方出處的防護（不再擴充）
+
+以下處理是審查時為格式錯誤的輸入補上的，官方文件沒有對應形狀：同層大小寫變體
+（JSON 與 XML）、XML 同標籤佔位與紀錄並存、醫囑子項欄位值為巢狀、空物件子項或節區。
+現有防護由兩端測試守住，保留不動；之後遇到同類「官方不會產生」的輸入，MUST NOT
+再逐一加處理，除非有真實下載檔出現該形狀。
