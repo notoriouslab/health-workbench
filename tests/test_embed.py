@@ -116,3 +116,20 @@ def test_script_tag_escaping(db):
     assert "</script>" in json.loads(emb.replace("\\u003c", "<")
                                      .replace("\\u003e", ">")
                                      .replace("\\u0026", "&"))["reports"][0]["report_text"]
+
+
+def test_sources_import_stats_whitelist(db):
+    """匯出只帶 inserted／skipped_dup：健保 nhi_retained（含遮罩身分證）不得進 payload。"""
+    import json
+    s = Store(db)
+    raw = [r[0] for r in s.con.execute("SELECT import_stats FROM source_documents")]
+    payload, _ = build_payload(s, db)
+    s.close()
+    # 前提：資料庫裡確實存了保留資料，否則本測試是空測
+    assert any("nhi_retained" in (r or "") and "Z99999****" in (r or "") for r in raw)
+    text = json.dumps(payload, ensure_ascii=False)
+    assert "Z99999****" not in text
+    assert "nhi_retained" not in text and "nhi_failed_records" not in text
+    for src in payload["meta"]["sources"]:
+        st = json.loads(src["import_stats"])
+        assert set(st) <= {"inserted", "skipped_dup"} and "inserted" in st

@@ -13,6 +13,24 @@ from src.knowledge.drugs import DrugLookup
 from src.knowledge.labs import load_entries
 from src.store.schema import PER_ROW_TYPES
 
+# 匯出只帶檢視層用得到的匯入統計（白名單）。import_stats 也存 adapter 的
+# 內部保留資料（健保 nhi_retained 含遮罩身分證與未顯示節區全文），不得隨
+# HTML 匯出外流。與 app/src/provider/payload.js 的 exportStats 必須同值。
+EXPORT_STAT_KEYS = ("inserted", "skipped_dup")
+
+
+def export_stats(raw):
+    if not raw:
+        return None
+    try:
+        st = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(st, dict):
+        return None
+    return json.dumps({k: st[k] for k in EXPORT_STAT_KEYS if k in st}, ensure_ascii=False)
+
+
 TREND_EXCLUDE = "quality_flags NOT LIKE '%epoch_placeholder_date%' AND quality_flags NOT LIKE '%out_of_range%'"
 
 # 計數型（日加總取最大）vs 中位數型（逐筆保留組全等）vs 帶狀型（讀彙總表）。
@@ -216,7 +234,8 @@ def build_payload(store, db_path):
             "date_min": date_min, "date_max": date_max,
             "profile": con.execute("SELECT display_name FROM profiles LIMIT 1").fetchone()[0],
             "counts": store.table_counts(),
-            "sources": [dict(r) for r in con.execute(
+            "sources": [{**dict(r), "import_stats": export_stats(r["import_stats"])}
+                        for r in con.execute(
                 "SELECT filename, adapter, imported_at, import_stats"
                 " FROM source_documents ORDER BY imported_at")],
             "drug_cache": drug_cache_meta,

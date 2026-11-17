@@ -164,6 +164,17 @@ code:
 - **THEN** 嵌入資料含每日摘要與事件，檢視程式含睡眠呼吸分頁，且不超過
   既有體積門檻
 
+**來源統計 MUST 以白名單匯出**：payload 的 `meta.sources[].import_stats`
+只 SHALL 帶檢視層使用的 `inserted` 與 `skipped_dup`。adapter 存於
+import_stats 的其他內容（例如健保 `nhi_retained` 的遮罩身分證與未顯示節區
+全文、`nhi_failed_records`）MUST NOT 進入 HTML 或 EPUB 匯出；新增的統計鍵
+預設不匯出。JS 與 Python 兩份 payload MUST 同值。
+
+#### Scenario: 保留資料不隨匯出外流
+- **WHEN** 匯入含 b1.1 與未投影節區的健保檔後產生 payload
+- **THEN** 序列化後的 payload 不含遮罩身分證字串、`nhi_retained`、
+  `nhi_failed_records`，每筆 sources 的 import_stats 鍵僅限白名單
+
 <!-- @trace
 source: cpap-sleep-therapy
 updated: 2026-08-13

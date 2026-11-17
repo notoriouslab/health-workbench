@@ -141,3 +141,21 @@ test("payload 各鍵覆蓋：A 視角下每個資料鍵都經過過濾查詢（�
   assert.ok(steps.length >= 1, "活動聚合應含 A 的步數");
   await d.close();
 });
+
+test("匯出 sources 的 import_stats 只帶白名單：遮罩身分證與 nhi_retained 不外流", async () => {
+  const { d, a } = await twoMemberDb();
+  const raw = (await d.select("SELECT import_stats FROM source_documents")).map(r => r.import_stats || "");
+  // 前提：資料庫裡確實存了保留資料，否則本測試是空測
+  assert.ok(raw.some(s => s.includes("nhi_retained") && s.includes("A11111****")));
+  const p = await buildPayload(d,
+    { profileId: a, knowledgeEntries: [], drugCachePath: null, today: "2026-08-10" });
+  const text = JSON.stringify(p);
+  assert.ok(!text.includes("A11111****"), "payload 夾帶遮罩身分證");
+  assert.ok(!text.includes("nhi_retained") && !text.includes("nhi_failed_records"));
+  for (const s of p.meta.sources) {
+    const st = JSON.parse(s.import_stats);
+    assert.ok(Object.keys(st).every(k => k === "inserted" || k === "skipped_dup"));
+    assert.ok(st.inserted, "白名單鍵仍須保留");
+  }
+  await d.close();
+});

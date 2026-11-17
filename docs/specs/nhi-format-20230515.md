@@ -53,8 +53,10 @@ Python JSON、App JSON/XML adapter 版本升為 **1.1.0**，SQLite schema 維持
   也存於此處。這是既有 JSON 欄位的附加鍵，原統計鍵與表結構不變。
 - 逐筆失敗內容存於 `import_stats.nhi_failed_records[section][source_index]`，
   品質報告保留 `parse_errors`；有效同節區紀錄仍會繼續處理。
-  現有儀表板／EPUB 不會展示這些節區，但來源 metadata 可能隨匯出載入，
-  匯出檔與資料庫一樣含健康資料，不能把「未顯示」視為已去除資料。
+  現有儀表板／EPUB 不會展示這些節區；HTML 與 EPUB 匯出的來源統計以白名單
+  只帶 inserted／skipped_dup，這兩個附加鍵不會進入匯出檔（app-viewer spec
+  「單檔 HTML 匯出」）。資料庫檔本身仍含這些內容，備份或分享資料庫檔時
+  不能把「未顯示」視為已去除資料。
 - 原紀錄指紋、檔案 SHA-256 去重、歸戶護欄與原始控制字元容忍皆維持。
   新建空庫也必須有 b1.1，否則不建立 profile 或來源紀錄。
 - **既有資料不自動重寫**：舊的 r10 `extra_json` 顯示名稱及舊版丟失的未投影資料

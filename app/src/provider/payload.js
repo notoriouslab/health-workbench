@@ -5,6 +5,22 @@
 import { attachDrugs } from "../knowledge/drugs.js";
 import { requireProfile } from "../engine/profiles.js";
 import { PER_ROW_TYPES } from "../engine/aggregate.js";
+import { pyJsonDumps } from "../engine/fingerprint.js";
+
+// 匯出只帶檢視層用得到的匯入統計（白名單）。import_stats 也存 adapter 的
+// 內部保留資料（健保 nhi_retained 含遮罩身分證與未顯示節區全文），不得隨
+// HTML 匯出外流；未來新增的統計鍵預設不出去。與 src/dashboard/embed.py
+// 的 export_stats 必須同值（provider_parity 釘住）。
+export const EXPORT_STAT_KEYS = ["inserted", "skipped_dup"];
+export function exportStats(json) {
+  if (!json) return null;
+  let st;
+  try { st = JSON.parse(json); } catch { return null; }
+  if (!st || typeof st !== "object" || Array.isArray(st)) return null;
+  const out = {};
+  for (const k of EXPORT_STAT_KEYS) if (Object.hasOwn(st, k)) out[k] = st[k];
+  return pyJsonDumps(out, { sortKeys: false });
+}
 
 const TREND_EXCLUDE = "quality_flags NOT LIKE '%epoch_placeholder_date%'"
   + " AND quality_flags NOT LIKE '%out_of_range%'";
@@ -279,7 +295,7 @@ export async function buildPayload(driver, { profileId, knowledgeEntries,
   const sources = (await driver.select(
     "SELECT filename, adapter, imported_at, import_stats"
     + " FROM source_documents WHERE profile_id=? ORDER BY imported_at",
-    [profileId])).map(r => ({ ...r }));
+    [profileId])).map(r => ({ ...r, import_stats: exportStats(r.import_stats) }));
 
   const cpap = await cpapBlock(driver, profileId);
 
