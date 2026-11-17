@@ -139,7 +139,11 @@ class NhiJsonAdapter:
         # 呈現，TAB 的對齊有意義。JS 版 JSON.parse 無對應開關，以 parseJsonTolerant
         # 達成同語意，兩實作等價性由 app/tests/parity/ 釘住。
         data = json.loads(raw.decode("utf-8-sig"), strict=False)
-        bdata = code_keys(data["myhealthbank"]["bdata"])
+        try:
+            bdata = code_keys(data["myhealthbank"]["bdata"])
+        except ValueError as e:
+            print(f"匯入中止：檔案格式異常（{e}），未寫入任何資料。", file=sys.stderr)
+            return 3
         masked_id = (bdata.get("b1.1") or "").strip()
 
         store = Store(db_path)

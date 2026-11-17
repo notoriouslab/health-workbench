@@ -94,7 +94,10 @@
      再開時剩餘天數是那天的事實，而不是產生日凍結的舊值。 */
   function medStatus(items, todayMs) {
     const now = todayMs == null ? Date.now() : todayMs;
-    const latest = (items || []).filter((m) => m && m.date)
+    // 住院醫囑（section r2>r2_1）沒有給藥日數，也不代表出院後的用藥：
+    // 不參與判定，否則日期較新時會把門診慢性處方擠到「過往」
+    const latest = (items || [])
+      .filter((m) => m && m.date && !(m.section_hint || "").startsWith("r2"))
       .reduce((a, b) => (a && a.date >= b.date ? a : b), null);
     if (!latest) return { active: false, remainingDays: null, reason: null };
     const days = latest.days_supply;

@@ -117,3 +117,16 @@ def test_placeholders_and_bad_children(tmp_path, monkeypatch):
     assert 'r4' not in stats['nhi_retained'] and 'r12' not in stats['nhi_retained']
     status = {k: v['status'] for k, v in reports[0]['sections'].items()}
     assert [status[k] for k in ('r2', 'r3', 'r4', 'r5', 'r7', 'r12')] == ['no_data'] * 6
+
+
+def test_top_level_case_conflict_aborts_cleanly(tmp_path, capsys):
+    """頂層 r1 與 R1 並存：中止並給訊息，不噴 traceback、不寫入任何資料。"""
+    p = tmp_path / 'conflict.json'
+    p.write_text(json.dumps({'myhealthbank': {'bdata': {'b1.1': 'Z99999****', 'r1': [], 'R1': []}}}),
+                 encoding='utf-8')
+    db = tmp_path / 'c.sqlite'
+    assert NhiJsonAdapter().import_file(p, db_path=db, assume_profile=True) == 3
+    assert '格式異常' in capsys.readouterr().err
+    s = Store(db)
+    assert s.con.execute('SELECT COUNT(*) FROM source_documents').fetchone()[0] == 0
+    s.close()
