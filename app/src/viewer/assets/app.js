@@ -116,10 +116,14 @@
 
   /* 用藥列的顯示取值（診間視角區塊、摘要卡、列印清單共用）。
      medRowName 只讀 .m，所以帶 .m 的任何形狀都能傳；medRecent 取日期最大的
-     一筆，與 medStatus 的判定基準同一筆（不倚賴呼叫端排序）。 */
+     一筆，與 medStatus 的判定基準同一筆（同樣排除住院醫囑；只有住院醫囑的藥
+     才退回用住院那筆），不倚賴呼叫端排序。 */
   const medRowName = (g) => g.m.drug_zh || g.m.order_name;
-  const medRecent = (g) => g.items
-    .reduce((a, b) => (a && a.date >= b.date ? a : b), null).date;
+  const medRecent = (g) => {
+    const outpatient = g.items.filter((m) => !(m.section_hint || "").startsWith("r2"));
+    return (outpatient.length ? outpatient : g.items)
+      .reduce((a, b) => (a && a.date >= b.date ? a : b), null).date;
+  };
 
   /* ---------- 共用元件 ---------- */
   function latestAndDelta(series, daysBack) {

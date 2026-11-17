@@ -98,3 +98,15 @@ test("只有住院醫囑的藥：不判為目前在吃", () => {
   const items = [{ date: daysAgo(5), days_supply: null, section_hint: "r2>r2_1" }];
   assert.equal(medStatus(items, TODAY).active, false);
 });
+
+test("medRecent 與 medStatus 取同一筆：住院同藥不改變顯示的最近處方日期", () => {
+  const SRC2 = readFileSync(new URL("app.js", ASSETS), "utf-8");
+  const at = SRC2.indexOf("const medRecent");
+  assert.ok(at > 0, "medRecent 錨點失效");
+  const end = SRC2.indexOf("};", at) + 2;
+  const medRecent = new Function(`${SRC2.slice(at, end)};return medRecent;`)();
+  const out = { date: daysAgo(20), days_supply: 90, section_hint: "r1>r1_1" };
+  const inp = { date: daysAgo(10), days_supply: null, section_hint: "r2>r2_1" };
+  assert.equal(medRecent({ items: [out, inp] }), out.date);
+  assert.equal(medRecent({ items: [inp] }), inp.date, "只有住院醫囑時退回住院那筆");
+});

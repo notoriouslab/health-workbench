@@ -67,12 +67,24 @@ export function xmlToBdata(text) {
   if (open === -1 || close === -1) throw new Error("找不到 bdata 節點");
   const { pairs } = parsePairs(t, open + "<bdata>".length, close);
   const bdata = {};
+  const rawOf = new Map();
+  // 只有佔位（[{rN: 無資料／空字串}]）的節區
+  const placeholderOnly = (tag) => Array.isArray(bdata[tag]) && bdata[tag].length === 1
+    && Object.keys(bdata[tag][0]).length === 1 && isPlaceholderText(bdata[tag][0][tag]);
   for (const [rawTag, val] of pairs) {
     const tag = rawTag.toLowerCase();
+    // 同層大小寫變體（<b1.1> 與 <B1.1>、<r1> 與 <R1>）不得靜默覆蓋或合併：與 JSON 版
+    // codeKeys 一致，整份中止
+    if (rawOf.has(tag) && rawOf.get(tag) !== rawTag) throw new Error(`Conflicting NHI keys: ${tag}`);
+    rawOf.set(tag, rawTag);
     if (Array.isArray(val)) {
-      (bdata[tag] = bdata[tag] || []).push(shapeRecord(val));
+      // 真紀錄取代先出現的「無資料」佔位，避免佔位被當成一筆假紀錄
+      if (!Array.isArray(bdata[tag]) || placeholderOnly(tag)) bdata[tag] = [];
+      bdata[tag].push(shapeRecord(val));
     } else if (/^r\d+$/.test(tag)) {
-      // 葉節點型節區（如 <r2>無資料</r2>、<r0>聲明文字</r0>）→ JSON 版同形
+      // 葉節點型節區（如 <r2>無資料</r2>、<r0>聲明文字</r0>）→ JSON 版同形；
+      // 已有真紀錄時，後出現的佔位不得覆蓋
+      if (Array.isArray(bdata[tag]) && !placeholderOnly(tag) && isPlaceholderText(val)) continue;
       bdata[tag] = [{ [tag]: val }];
     } else {
       bdata[tag] = val; // b1.1 / b1.2

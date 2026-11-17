@@ -144,3 +144,23 @@ test("XML leaf placeholders: empty section and nested 無資料 text", async () 
   assert.equal(r.report.sections.r2.status, "no_data");
   await driver.close();
 });
+
+test("XML top level: placeholder and records mixed in either order, and case-variant keys", async () => {
+  const wrap = body => `<?xml version="1.0" encoding="UTF-8"?><myhealthbank><bdata><b1.1>Z99999****</b1.1>${body}</bdata></myhealthbank>`;
+  const rec = `<r2><r2.3>0000000002</r2.3><r2.4>合成住院院所</r2.4><r2.5>20230401</r2.5></r2>`;
+  for (const [name, body] of [["placeholder first", `<r2>無資料</r2>${rec}`], ["placeholder last", `${rec}<r2>無資料</r2>`]]) {
+    const { driver, profileId } = await fresh();
+    const r = await nhiXmlAdapter.importSource(source(`${name}.xml`, wrap(body)), driver, null, { labEntries: [], profileId });
+    assert.equal(r.status, "ok", name);
+    const rows = await driver.select("SELECT date, quality_flags FROM encounters WHERE section='r2'");
+    assert.deepEqual(rows.map(x => x.date), ["2023-04-01"], `${name}：只有真紀錄、沒有假事件也沒有被佔位吃掉`);
+    assert.equal(r.report.sections.r2.status, "parsed", name);
+    await driver.close();
+  }
+  const { driver, profileId } = await fresh();
+  await assert.rejects(
+    nhiXmlAdapter.importSource(source("conflict.xml", wrap("<B1.1>Y88888****</B1.1>")), driver, null, { labEntries: [], profileId }),
+    /Conflicting NHI keys: b1\.1/);
+  assert.equal((await driver.select("SELECT COUNT(*) c FROM source_documents"))[0].c, 0);
+  await driver.close();
+});

@@ -63,6 +63,10 @@ Python JSON、App JSON/XML adapter 版本升為 **1.1.0**，SQLite schema 維持
   不會因更新程式而恢復；同 SHA 檔案仍跳過。需要修正歷史內容時，先備份，
   使用保留的來源檔建立新的資料庫再核對；不要直接更名錯置的舊數值或刪除來源。
   跨匯出檔若代碼大小寫不同，仍可能有不同紀錄指紋，這是保留原指紋契約的取捨。
+  同理，JSON 以數字（如 `"r10.14": 233`）或單筆物件表示的紀錄，與同批 XML
+  （值一律為字串、明細一律為陣列）的指紋不同；同一庫先後匯入兩種格式時不保證去重。
+- r10 的 `extra_json` 以中文顯示名為鍵，舊版資料的 TC/TG 名稱對調。日後若要顯示
+  成健附加欄位，MUST 以欄位代碼從 canonical 取值，MUST NOT 依 extra_json 的中文鍵。
 - XML 支援仍在 App；本次未新增 Python CLI XML adapter。
 
 ## 回歸證據
@@ -71,7 +75,9 @@ Python JSON、App JSON/XML adapter 版本升為 **1.1.0**，SQLite schema 維持
 使用「合成」文字、SYN 代碼及既有測試遮罩 ID，未擷取任何患者檔案或 PDF 個案。
 測試涵蓋全部 14 節區、r2 醫囑錯位防護、TC/TG 分辨、大寫醫囑、兩種肝炎欄位形狀、
 未知節區保存、null／缺少／無資料／單筆物件、壞紀錄續行及重複匯入。
-XML 由同一合成結構序列化，另外比對 Python/JS 完整資料庫及品質報告。
+XML 由同一合成結構序列化後單獨匯入驗證；Python/JS 完整資料庫及品質報告的
+對帳以 JSON 進行。另有 `tests/fixtures/nhi_edge_placeholders.json` 涵蓋各種無資料
+佔位形狀、壞子項與 null 子項。
 
 執行方式（Python 需 pytest 與 PyYAML；Node 需支援 node:sqlite）：
 

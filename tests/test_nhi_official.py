@@ -130,3 +130,29 @@ def test_top_level_case_conflict_aborts_cleanly(tmp_path, capsys):
     s = Store(db)
     assert s.con.execute('SELECT COUNT(*) FROM source_documents').fetchone()[0] == 0
     s.close()
+
+
+def test_medication_reconciliation_includes_inpatient(tmp_path, monkeypatch):
+    """醫囑對帳涵蓋 r2_1：首次匯入 expected_in_file 等於 inserted_new，且含住院醫囑。"""
+    reports = []
+    monkeypatch.setattr('src.adapters.nhi_json.render_text', lambda r: reports.append(r) or '')
+    db = tmp_path / 'rec.sqlite'
+    assert NhiJsonAdapter().import_file(FIXTURE, db_path=db, assume_profile=True) == 0
+    s = Store(db)
+    by_sec = dict(s.con.execute("SELECT section, COUNT(*) FROM medications GROUP BY section").fetchall())
+    s.close()
+    rec = json.dumps(reports[0], ensure_ascii=False, default=str)
+    found = [v for v in _walk(reports[0]) if isinstance(v, dict) and 'expected_in_file' in v]
+    assert found, rec[:200]
+    assert found[0]['expected_in_file'] == found[0]['inserted_new'] == sum(by_sec.values())
+    assert by_sec.get('r2>r2_1', 0) >= 1
+
+
+def _walk(o):
+    yield o
+    if isinstance(o, dict):
+        for v in o.values():
+            yield from _walk(v)
+    elif isinstance(o, list):
+        for v in o:
+            yield from _walk(v)

@@ -140,6 +140,13 @@ code:
 NHI XML adapter MUST 識別 r1-r14（2023-05-15 X2 第 1 頁列出全部 14 節區），
 欄位對照、投影與原值保留 SHALL 與 JSON 共用核心，r8 報告 MUST 保留原始換行。
 r4/r5/r12/r13/r14 尚無專用投影時，SHALL 依 nhi-import 規格保留完整來源內容。
+同一節區的「無資料」佔位與真紀錄並存時（任一順序），佔位 MUST NOT 產生資料列，
+也 MUST NOT 覆蓋已收集的紀錄；巢狀明細同理。同層標籤僅大小寫不同（如
+`<b1.1>` 與 `<B1.1>`）MUST 整檔中止，與 JSON 一致。
+
+已知限制：XML 的值一律是字串、巢狀明細一律是陣列，而 canonical 保留 JSON 的
+型別與形狀，因此 JSON 檔若以數字或單筆物件表示，與同批 XML 的紀錄指紋會不同，
+兩者匯入同一庫時 MUST NOT 宣稱能去重。
 
 #### Scenario: 同批 JSON/XML 交叉對帳
 - **WHEN** 將同批下載的 JSON 與 XML 檔分別匯入兩個空庫，以

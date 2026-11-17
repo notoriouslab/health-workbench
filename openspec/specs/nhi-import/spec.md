@@ -22,8 +22,20 @@ MUST NOT 產生資料列。省略、null、空陣列 SHALL 被接受；單筆物
 逐筆解析失敗 MUST 記錄 parse_errors 並把原紀錄保存於
 `import_stats.nhi_failed_records[section][source_index]`，MUST NOT 靜默丟棄。
 
+無資料的判定 SHALL 涵蓋下列形狀，一律標 no_data 且 MUST NOT 產生資料列：
+空陣列、空物件、`[{"rN": "無資料"}]`、`[{"rN": ""}]`、`[{"rN": null}]`，
+以及節區值本身為「無資料」或空字串。巢狀明細套用同一判定；明細中的 null 與
+空物件子項 SHALL 略過且不記為失敗（頂層的 null 紀錄則記為失敗），寫入的
+source_index MUST 為該子項在原始陣列中的位置。
+
+大小寫衝突的處理 SHALL 分層：頂層節區或 b 鍵衝突 MUST 整檔中止且不寫入任何
+資料；紀錄層衝突該筆失敗；醫囑子項衝突時所屬就醫事件整筆失敗。醫囑子項的
+欄位值 MUST 為單一值（字串、數字、布林或 null），否則所屬就醫事件整筆失敗；
+子項 MUST 在父事件寫入前全部檢查完畢，MUST NOT 留下事件已入庫而醫囑只寫入
+一部分的狀態。
+
 #### Scenario: 完整檔案匯入
-- **WHEN** 匯入一份含 r1(63)/r3(2)/r6(4)/r7(68)/r8(7)/r9(15)/r10(1)/r11(2)
+- **WHEN** 匯入一份 r1、r3、r6～r11 各有若干筆，
   且 r2/r4/r5/r12/r13/r14 為無資料的下載檔
 - **THEN** 各節區筆數與品質報告一致，無資料節區標記 no_data，
   總就醫事件 = r1+r2+r3+r9 筆數（本例 r2 為無資料）
@@ -34,12 +46,18 @@ MUST NOT 產生資料列。省略、null、空陣列 SHALL 被接受；單筆物
 
 
 <!-- @trace
-source: mvp-core-dashboard
-updated: 2026-08-09
+source: mvp-core-dashboard, nhi-official-format-alignment
+updated: 2026-11-17
 code:
   - bin/hwb
   - docs/verification/karen_reality.md
   - README.md
+  - src/adapters/nhi_json.py
+  - src/adapters/nhi_fieldmap.py
+  - app/src/adapters/nhi_json.js
+  - app/src/adapters/nhi_fieldmap.js
+  - app/src/adapters/nhi_xml.js
+  - docs/specs/nhi-format-20230515.md
 -->
 
 ---
@@ -67,8 +85,11 @@ code:
 r9_1（中醫醫囑）為用藥/處置明細，每筆 MUST 關聯所屬就醫事件。
 匯入完成後明細總數 MUST 與原始檔逐節區加總相等（對帳驗證）。
 
+有效醫囑指所屬就醫事件解析成功、且不是 null 或空物件的子項。
+
 #### Scenario: 醫囑對帳
-- **WHEN** 原始檔 r1_1+r2_1+r3_1+r9_1 合計 N 筆有效醫囑
+- **WHEN** 首次匯入的原始檔 r1_1+r2_1+r3_1+r9_1 合計 N 筆有效醫囑，
+  且檔內沒有指紋相同的重複就醫事件
 - **THEN** medications 表恰好新增 N 筆且每筆 encounter_id 有效
 
 #### Scenario: 住院醫囑欄位不沿用門診位置
@@ -86,19 +107,26 @@ r9_1（中醫醫囑）為用藥/處置明細，每筆 MUST 關聯所屬就醫事
 
 
 <!-- @trace
-source: mvp-core-dashboard
-updated: 2026-08-09
+source: mvp-core-dashboard, nhi-official-format-alignment
+updated: 2026-11-17
 code:
   - bin/hwb
   - docs/verification/karen_reality.md
   - README.md
+  - src/adapters/nhi_json.py
+  - src/adapters/nhi_fieldmap.py
+  - app/src/adapters/nhi_json.js
+  - app/src/adapters/nhi_fieldmap.js
+  - app/src/adapters/nhi_xml.js
+  - docs/specs/nhi-format-20230515.md
 -->
 
 ---
 ### Requirement: 遮罩身分證歸戶
 系統 SHALL 讀取 b1.1（遮罩身分證，如 A12345****）與現有 profile 比對：
 一致則歸入該 profile；不一致或首見 MUST 停止並要求使用者確認，
-MUST NOT 自動建新 profile 或混入現有 profile。
+MUST NOT 自動建新 profile 或混入現有 profile。檔案缺 b1.1 時 MUST 中止，
+空資料庫亦同，MUST NOT 建立無遮罩身分證的 profile 或來源紀錄。
 
 #### Scenario: 不同人檔案誤匯防護
 - **WHEN** 資料庫 profile 的遮罩身分證為 A12345****，匯入檔 b1.1=B98765****
@@ -106,12 +134,18 @@ MUST NOT 自動建新 profile 或混入現有 profile。
 
 
 <!-- @trace
-source: mvp-core-dashboard
-updated: 2026-08-09
+source: mvp-core-dashboard, nhi-official-format-alignment
+updated: 2026-11-17
 code:
   - bin/hwb
   - docs/verification/karen_reality.md
   - README.md
+  - src/adapters/nhi_json.py
+  - src/adapters/nhi_fieldmap.py
+  - app/src/adapters/nhi_json.js
+  - app/src/adapters/nhi_fieldmap.js
+  - app/src/adapters/nhi_xml.js
+  - docs/specs/nhi-format-20230515.md
 -->
 
 ---
