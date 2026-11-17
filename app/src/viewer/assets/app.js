@@ -65,6 +65,7 @@
 
   const TYPE_META = {
     western_outpatient: ["西醫門診", "var(--s1)"],
+    inpatient: ["住院", "var(--s5)"],
     tcm: ["中醫門診", "var(--s2)"],
     dental: ["牙醫門診", "var(--s3)"],
     pharmacy_dispensing: ["藥局調劑", "var(--s4)"],
@@ -93,7 +94,10 @@
      再開時剩餘天數是那天的事實，而不是產生日凍結的舊值。 */
   function medStatus(items, todayMs) {
     const now = todayMs == null ? Date.now() : todayMs;
-    const latest = (items || []).filter((m) => m && m.date)
+    // 住院醫囑（section r2>r2_1）沒有給藥日數，也不代表出院後的用藥：
+    // 不參與判定，否則日期較新時會把門診慢性處方擠到「過往」
+    const latest = (items || [])
+      .filter((m) => m && m.date && !(m.section_hint || "").startsWith("r2"))
       .reduce((a, b) => (a && a.date >= b.date ? a : b), null);
     if (!latest) return { active: false, remainingDays: null, reason: null };
     const days = latest.days_supply;
@@ -112,10 +116,14 @@
 
   /* 用藥列的顯示取值（診間視角區塊、摘要卡、列印清單共用）。
      medRowName 只讀 .m，所以帶 .m 的任何形狀都能傳；medRecent 取日期最大的
-     一筆，與 medStatus 的判定基準同一筆（不倚賴呼叫端排序）。 */
+     一筆，與 medStatus 的判定基準同一筆（同樣排除住院醫囑；只有住院醫囑的藥
+     才退回用住院那筆），不倚賴呼叫端排序。 */
   const medRowName = (g) => g.m.drug_zh || g.m.order_name;
-  const medRecent = (g) => g.items
-    .reduce((a, b) => (a && a.date >= b.date ? a : b), null).date;
+  const medRecent = (g) => {
+    const outpatient = g.items.filter((m) => !(m.section_hint || "").startsWith("r2"));
+    return (outpatient.length ? outpatient : g.items)
+      .reduce((a, b) => (a && a.date >= b.date ? a : b), null).date;
+  };
 
   /* ---------- 共用元件 ---------- */
   function latestAndDelta(series, daysBack) {

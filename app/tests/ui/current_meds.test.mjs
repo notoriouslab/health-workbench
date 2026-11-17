@@ -84,3 +84,29 @@ test("空集合與壞日期：靜默歸過往，不拋出", () => {
   assert.deepEqual(medStatus([{ date: "不是日期", days_supply: 30 }], TODAY),
     { active: false, remainingDays: null, reason: null });
 });
+
+test("住院醫囑不參與判定：門診慢性處方之後的住院同藥不會把它擠到過往", () => {
+  // 門診 20 日前開 90 日份；10 日前住院出現同藥（住院醫囑無給藥日數）
+  const items = [
+    { date: daysAgo(20), days_supply: 90, section_hint: "r1>r1_1" },
+    { date: daysAgo(10), days_supply: null, section_hint: "r2>r2_1" },
+  ];
+  assert.deepEqual(medStatus(items, TODAY), { active: true, remainingDays: 70, reason: null });
+});
+
+test("只有住院醫囑的藥：不判為目前在吃", () => {
+  const items = [{ date: daysAgo(5), days_supply: null, section_hint: "r2>r2_1" }];
+  assert.equal(medStatus(items, TODAY).active, false);
+});
+
+test("medRecent 與 medStatus 取同一筆：住院同藥不改變顯示的最近處方日期", () => {
+  const SRC2 = readFileSync(new URL("app.js", ASSETS), "utf-8");
+  const at = SRC2.indexOf("const medRecent");
+  assert.ok(at > 0, "medRecent 錨點失效");
+  const end = SRC2.indexOf("};", at) + 2;
+  const medRecent = new Function(`${SRC2.slice(at, end)};return medRecent;`)();
+  const out = { date: daysAgo(20), days_supply: 90, section_hint: "r1>r1_1" };
+  const inp = { date: daysAgo(10), days_supply: null, section_hint: "r2>r2_1" };
+  assert.equal(medRecent({ items: [out, inp] }), out.date);
+  assert.equal(medRecent({ items: [inp] }), inp.date, "只有住院醫囑時退回住院那筆");
+});

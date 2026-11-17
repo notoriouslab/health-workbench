@@ -137,8 +137,16 @@ code:
 ---
 ### Requirement: 健保 XML 匯入
 
-MUST 新增 NHI XML adapter：解析 XML 版共同節區（r1-r8，官方 XML 格式
-無 r9-r14），欄位對照與 JSON 版一致，r8 報告 MUST 保留原始換行。
+NHI XML adapter MUST 識別 r1-r14（2023-05-15 X2 第 1 頁列出全部 14 節區），
+欄位對照、投影與原值保留 SHALL 與 JSON 共用核心，r8 報告 MUST 保留原始換行。
+r4/r5/r12/r13/r14 尚無專用投影時，SHALL 依 nhi-import 規格保留完整來源內容。
+同一節區的「無資料」佔位與真紀錄並存時（任一順序），佔位 MUST NOT 產生資料列，
+也 MUST NOT 覆蓋已收集的紀錄；巢狀明細同理。同層標籤僅大小寫不同（如
+`<b1.1>` 與 `<B1.1>`）MUST 整檔中止，與 JSON 一致。
+
+已知限制：XML 的值一律是字串、巢狀明細一律是陣列，而 canonical 保留 JSON 的
+型別與形狀，因此 JSON 檔若以數字或單筆物件表示，與同批 XML 的紀錄指紋會不同，
+兩者匯入同一庫時 MUST NOT 宣稱能去重。
 
 #### Scenario: 同批 JSON/XML 交叉對帳
 - **WHEN** 將同批下載的 JSON 與 XML 檔分別匯入兩個空庫，以
@@ -146,13 +154,13 @@ MUST 新增 NHI XML adapter：解析 XML 版共同節區（r1-r8，官方 XML �
 - **THEN** r1-r7 全部紀錄指紋對齊且欄位全等；白名單僅 r8：官方 JSON
   移除換行字元（非代換空白），故含換行報告的指紋跨格式必然不同，
   以弱鍵（test_date＋order_code＋facility_name）對齊後 report_text
-  去除全部空白後 MUST 全等（2026-08-09 真實同批檔實測：65 encounters
-  ＋68 labs＋4 immunizations 指紋全對齊零差異；r8 7 筆中 6 筆含換行）
+  去除全部空白後 MUST 全等。此為既有部分匯出檔的相容性測試，
+  不得推論其他節區不在 XML 格式內。另 SHALL 使用合成 14 節區測試驗證完整範圍。
 
-#### Scenario: XML 節區缺漏事實
-- **WHEN** 匯入 XML 檔
-- **THEN** r9-r14 節區標記 no_data 且品質報告註明「XML 格式無此節區」，
-  不誤報為資料異常
+#### Scenario: XML 未提供節區
+- **WHEN** 匯入的 XML 未含某一節區
+- **THEN** 該節區標記 no_data 且品質報告註明「來源未提供此節區」；
+  不聲稱 XML 規格排除該節區。若 r9-r14 有內容則正常解析或保存原值。
 
 
 <!-- @trace

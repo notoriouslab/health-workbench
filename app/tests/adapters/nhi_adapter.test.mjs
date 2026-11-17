@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -12,7 +13,7 @@ import { EngineStore } from "../../src/engine/store.js";
 import { createProfile } from "../../src/engine/profiles.js";
 import { TOP_KEYS } from "../../src/engine/quality_report.js";
 
-const REPO = new URL("../../..", import.meta.url).pathname;
+const REPO = fileURLToPath(new URL("../../..", import.meta.url));
 const FIXTURE = `${REPO}/tests/fixtures/nhi_sample.json`;
 const LABNORM_FIXTURE = `${REPO}/tests/fixtures/nhi_labnorm.json`;
 const LAB_ENTRIES = JSON.parse(
@@ -49,9 +50,9 @@ test("匯入 fixture：與 Python CLI 同檔逐表筆數一致", async () => {
 
   const tmp = mkdtempSync(path.join(tmpdir(), "hwb-parity-"));
   const pyDb = path.join(tmp, "py.sqlite");
-  execFileSync("python3", ["-m", "src.hwb_cli", "--db", pyDb, "import",
+  execFileSync(process.env.PYTHON || "python3", ["-m", "src.hwb_cli", "--db", pyDb, "import",
     FIXTURE, "--yes", "--no-rebuild"], { cwd: REPO, encoding: "utf-8" });
-  const py = JSON.parse(execFileSync("python3", ["-c", [
+  const py = JSON.parse(execFileSync(process.env.PYTHON || "python3", ["-c", [
     "import json, sys",
     "sys.path.insert(0, '.')",
     "from src.store.db import Store",

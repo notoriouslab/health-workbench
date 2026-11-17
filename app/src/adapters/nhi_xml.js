@@ -1,11 +1,11 @@
-// 健保存摺醫療類 XML adapter（app-import-engine spec：r1-r8 與 JSON 版
-// 等價入庫、r8 報告保留原始換行、r9-r14 標記格式事實）。
+// 健保存摺醫療類 XML adapter（app-import-engine spec：r1-r14 與 JSON 版
+// 等價入庫、r8 報告保留原始換行、缺少節區標記來源未提供）。
 // 解析結果轉成 JSON 版 bdata 形狀後走 nhi_json.js 的共用匯入核心，
 // 確保兩格式的欄位對照、指紋、防護行為零分叉。
 import { importNhiBdata, stripBom } from "./nhi_json.js";
 import { sha256Hex } from "../engine/fingerprint.js";
 
-export const ADAPTER_VERSION = "1.0.0";
+export const ADAPTER_VERSION = "1.1.0";
 
 const ENT = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&apos;": "'" };
 const decodeEntities = (s) =>
@@ -44,11 +44,18 @@ function parsePairs(text, pos, endPos) {
 }
 
 // pairs → JSON 版 bdata 形狀
+// 同一標籤同時出現文字佔位（<r1_1>無資料</r1_1>、空標籤）與巢狀子項時，
+// 佔位不得覆蓋已收集的子項，子項也要能取代先出現的佔位
+const isPlaceholderText = v => typeof v === "string" && ["", "無資料"].includes(v.trim());
 function shapeRecord(children) {
   const rec = {};
   for (const [tag, val] of children) {
-    if (Array.isArray(val)) (rec[tag] = rec[tag] || []).push(shapeRecord(val));
-    else rec[tag] = val;
+    if (Array.isArray(val)) {
+      if (!Array.isArray(rec[tag])) rec[tag] = [];
+      rec[tag].push(shapeRecord(val));
+    } else if (!(Array.isArray(rec[tag]) && isPlaceholderText(val))) {
+      rec[tag] = val;
+    }
   }
   return rec;
 }
@@ -60,12 +67,24 @@ export function xmlToBdata(text) {
   if (open === -1 || close === -1) throw new Error("找不到 bdata 節點");
   const { pairs } = parsePairs(t, open + "<bdata>".length, close);
   const bdata = {};
+  const rawOf = new Map();
+  // 只有佔位（[{rN: 無資料／空字串}]）的節區
+  const placeholderOnly = (tag) => Array.isArray(bdata[tag]) && bdata[tag].length === 1
+    && Object.keys(bdata[tag][0]).length === 1 && isPlaceholderText(bdata[tag][0][tag]);
   for (const [rawTag, val] of pairs) {
     const tag = rawTag.toLowerCase();
+    // 同層大小寫變體（<b1.1> 與 <B1.1>、<r1> 與 <R1>）不得靜默覆蓋或合併：與 JSON 版
+    // codeKeys 一致，整份中止
+    if (rawOf.has(tag) && rawOf.get(tag) !== rawTag) throw new Error(`Conflicting NHI keys: ${tag}`);
+    rawOf.set(tag, rawTag);
     if (Array.isArray(val)) {
-      (bdata[tag] = bdata[tag] || []).push(shapeRecord(val));
+      // 真紀錄取代先出現的「無資料」佔位，避免佔位被當成一筆假紀錄
+      if (!Array.isArray(bdata[tag]) || placeholderOnly(tag)) bdata[tag] = [];
+      bdata[tag].push(shapeRecord(val));
     } else if (/^r\d+$/.test(tag)) {
-      // 葉節點型節區（如 <r2>無資料</r2>、<r0>聲明文字</r0>）→ JSON 版同形
+      // 葉節點型節區（如 <r2>無資料</r2>、<r0>聲明文字</r0>）→ JSON 版同形；
+      // 已有真紀錄時，後出現的佔位不得覆蓋
+      if (Array.isArray(bdata[tag]) && !placeholderOnly(tag) && isPlaceholderText(val)) continue;
       bdata[tag] = [{ [tag]: val }];
     } else {
       bdata[tag] = val; // b1.1 / b1.2
