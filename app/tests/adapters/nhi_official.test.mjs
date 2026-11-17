@@ -99,3 +99,41 @@ test("null, omitted, singleton and malformed records do not discard valid siblin
   } finally { await driver.close(); }
   assert.throws(() => codeKeys({ r1: [], R1: [] }), /Conflicting/);
 });
+
+const EDGE = fileURLToPath(new URL("../../../tests/fixtures/nhi_edge_placeholders.json", import.meta.url));
+
+test("placeholder shapes and bad nested children: Python/JS parity", async () => {
+  const result = await runParity([EDGE], mkdtempSync(path.join(tmpdir(), "nhi-edge-")));
+  assert.deepEqual(result.dbDiffs, []);
+  assert.deepEqual(result.reportDiffs, []);
+});
+
+test("placeholder shapes create no fake rows; a bad child fails its whole encounter", async () => {
+  const { driver, profileId } = await fresh();
+  const r = await nhiJsonAdapter.importSource(source("edge.json", readFileSync(EDGE, "utf8")),
+    driver, null, { labEntries: [], profileId });
+  assert.equal(r.status, "ok");
+  const rows = async sql => driver.select(sql);
+  assert.deepEqual((await rows("SELECT date FROM encounters ORDER BY date")).map(x => x.date),
+    ["2023-05-01", "2023-05-02"]);
+  assert.deepEqual((await rows("SELECT order_code FROM medications")).map(x => x.order_code), ["SYN101"]);
+  assert.equal((await rows("SELECT COUNT(*) c FROM lab_results"))[0].c, 0);
+  assert.deepEqual((await rows("SELECT detail_json FROM cancer_screenings")).map(x => JSON.parse(x.detail_json)), [[], []]);
+  for (const sec of ["r2", "r4", "r7", "r12"]) assert.equal(r.report.sections[sec].status, "no_data", sec);
+  const stats = JSON.parse((await rows("SELECT import_stats FROM source_documents"))[0].import_stats);
+  assert.deepEqual(Object.keys(stats.nhi_failed_records), ["r1"]);
+  assert.deepEqual(Object.keys(stats.nhi_failed_records.r1), ["2"]);
+  await driver.close();
+});
+
+test("XML leaf placeholders: empty section and nested 無資料 text", async () => {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?><myhealthbank><bdata><b1.1>Z99999****</b1.1>`
+    + `<r2></r2><r11><r11.1>合成篩檢</r11.1><r11.2>合成項目</r11.2><r11_1>無資料</r11_1></r11></bdata></myhealthbank>`;
+  const { driver, profileId } = await fresh();
+  const r = await nhiXmlAdapter.importSource(source("edge.xml", xml), driver, null, { labEntries: [], profileId });
+  assert.equal(r.status, "ok");
+  assert.equal((await driver.select("SELECT COUNT(*) c FROM encounters"))[0].c, 0);
+  assert.equal((await driver.select("SELECT COUNT(*) c FROM cancer_screenings"))[0].c, 1);
+  assert.equal(r.report.sections.r2.status, "no_data");
+  await driver.close();
+});

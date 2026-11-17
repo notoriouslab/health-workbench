@@ -88,3 +88,28 @@ def test_empty_database_still_requires_identity(tmp_path):
     s = Store(db)
     assert s.table_counts()['profiles'] == s.table_counts()['source_documents'] == 0
     s.close()
+
+
+EDGE = Path(__file__).parent / 'fixtures/nhi_edge_placeholders.json'
+
+
+def test_placeholders_and_bad_children(tmp_path, monkeypatch):
+    """無資料佔位的各種形狀不產生假紀錄；壞子項讓整筆失敗而非寫一半。"""
+    reports = []
+    monkeypatch.setattr('src.adapters.nhi_json.render_text', lambda r: reports.append(r) or '')
+    db = tmp_path / 'edge.sqlite'
+    assert NhiJsonAdapter().import_file(EDGE, db_path=db, assume_profile=True) == 0
+    s = Store(db)
+    q = lambda sql: s.con.execute(sql).fetchall()
+    # null 子項略過、字串「無資料」明細為零筆；壞子項（數字）的事件整筆不入庫
+    assert [r[0] for r in q("SELECT date FROM encounters ORDER BY date")] == ['2023-05-01', '2023-05-02']
+    assert [r[0] for r in q("SELECT order_code FROM medications")] == ['SYN101']
+    assert q("SELECT COUNT(*) FROM encounters WHERE section='r2'")[0][0] == 0
+    assert q("SELECT COUNT(*) FROM lab_results")[0][0] == 0
+    assert [json.loads(r[0]) for r in q("SELECT detail_json FROM cancer_screenings ORDER BY category")] == [[], []]
+    stats = json.loads(q('SELECT import_stats FROM source_documents')[0][0])
+    s.close()
+    assert set(stats['nhi_failed_records']) == {'r1'} and set(stats['nhi_failed_records']['r1']) == {'2'}
+    assert 'r4' not in stats['nhi_retained'] and 'r12' not in stats['nhi_retained']
+    status = {k: v['status'] for k, v in reports[0]['sections'].items()}
+    assert [status[k] for k in ('r2', 'r4', 'r7', 'r12')] == ['no_data'] * 4

@@ -51,9 +51,13 @@ def section_rows(value):
     return value if isinstance(value, list) else [value]
 
 
-def detail_rows(value):
-    # XML empty nested elements may be represented as an empty string.
-    return [] if value == "" else section_rows(value)
+def detail_rows(value, sub_key):
+    """巢狀明細：無資料佔位（含 XML 葉節點的空字串／「無資料」字串）視為無明細，
+    null 子項略過（不當成一筆紀錄，也不讓整筆父紀錄失敗）。"""
+    rows = section_rows(value)
+    if is_no_data(rows, sub_key):
+        return []
+    return [r for r in rows if r is not None]
 
 
 def norm_date(s):
@@ -77,11 +81,21 @@ def to_num(s):
         return None
 
 
+def _blank_or_no_data(v):
+    return v is None or (isinstance(v, str) and v.strip() in ("", NO_DATA))
+
+
 def is_no_data(rows, sec):
-    return (isinstance(rows, list) and len(rows) == 1
-            and isinstance(rows[0], dict)
-            and list(rows[0].keys()) in ([sec], [sec.upper()])
-            and list(rows[0].values())[0] == NO_DATA)
+    """無資料佔位：[{"rN": "無資料"}]、XML 空節區 [{"rN": ""}]、
+    或整個節區就是字串「無資料」／空字串（經 section_rows 包成單元素清單）。"""
+    if not isinstance(rows, list) or len(rows) != 1:
+        return False
+    only = rows[0]
+    if isinstance(only, str):
+        return _blank_or_no_data(only)
+    return (isinstance(only, dict)
+            and list(only.keys()) in ([sec], [sec.upper()])
+            and _blank_or_no_data(list(only.values())[0]))
 
 
 @register
@@ -182,10 +196,8 @@ class NhiJsonAdapter:
                 unknown_fields[sec][k] = unknown_fields[sec].get(k, 0) + 1
             sub_key = f"{sec}_1"
             if sec in ("r11", "r12", "r13", "r14") and sub_key in rec:
-                children = detail_rows(rec[sub_key])
-                if not is_no_data(children, sub_key):
-                    for child in children:
-                        note_unknown(sub_key, code_keys(child))
+                for child in detail_rows(rec[sub_key], sub_key):
+                    note_unknown(sub_key, code_keys(child))
             return extra
 
         # --- 就醫事件（r1/r2/r3/r9）與巢狀醫囑 ---
@@ -213,6 +225,12 @@ class NhiJsonAdapter:
                     rec_type = "pharmacy_dispensing"
                 if d is None:
                     flags.append("missing_date")
+                # 子項先全部檢查完才寫入父事件：壞子項讓整筆失敗，不留下
+                # 「事件已入庫、醫囑只寫一半」且重匯時因指紋去重而永遠補不回的狀態
+                sub_key = f"{sec}_1"
+                meds = [code_keys(m) for m in detail_rows(rec.get(sub_key), sub_key)]
+                for med in meds:
+                    note_unknown(sub_key, med)
                 result = store.insert_fp_record(
                     "encounters", raw_rec, profile_id=pid, doc_id=doc_id, section=sec,
                     source_index=i, quality_flags=",".join(flags),
@@ -224,17 +242,11 @@ class NhiJsonAdapter:
                              "copay": to_num(rec.get(copay_k)),
                              "nhi_points": to_num(rec.get(pts_k)),
                              "extra_json": json.dumps(extra, ensure_ascii=False) if extra else None})
-                sub_key = f"{sec}_1"
-                meds = detail_rows(rec.get(sub_key))
-                if is_no_data(meds, sub_key):
-                    meds = []
                 med_expected += len(meds)
                 if result == "inserted":
                     n_out += 1
                     enc_id = store._last_insert_id
                     for j, med in enumerate(meds):
-                        med = code_keys(med)
-                        note_unknown(sub_key, med)
                         days_key = f"{sub_key}.6" if sec == "r3" else f"{sub_key}.4"
                         store.insert_medication(
                             profile_id=pid, doc_id=doc_id, encounter_id=enc_id,
@@ -360,7 +372,7 @@ class NhiJsonAdapter:
                     section="r11", source_index=i,
                     columns={"category": rec.get("r11.1"), "item_name": rec.get("r11.2"),
                              "detail_json": json.dumps(
-                                 [code_keys(child) for child in detail_rows(rec.get("r11_1"))],
+                                 [code_keys(child) for child in detail_rows(rec.get("r11_1"), "r11_1")],
                                  ensure_ascii=False)})
               guard("r11", i, _one)
             sections["r11"] = {"status": "parsed", "records": len(rows)}
@@ -368,9 +380,9 @@ class NhiJsonAdapter:
         # --- 其餘節區與未知節區 ---
         for sec in ["r4", "r5", "r12", "r13", "r14"]:
             rows = section_rows(bdata.get(sec))
-            if is_no_data(rows, sec):
+            if not rows or is_no_data(rows, sec):
                 sections[sec] = {"status": "no_data", "records": 0}
-            elif rows:
+            else:
                 retained[sec] = bdata[sec]
                 for i, rec in enumerate(rows):
                     guard(sec, i, lambda rec=rec: note_unknown(sec, code_keys(rec)))

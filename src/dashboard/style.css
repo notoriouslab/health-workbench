@@ -2,7 +2,7 @@
    Apple 健康風卡片流；雙色系；響應式（≥768px 不水平溢出、觸控目標 ≥44px） */
 :root {
   color-scheme: light dark;
-  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #8e5bd6;
   --bg: #f2f2f7; --card: #ffffff; --ink: #1c1c1e; --ink2: #8e8e93;
   --line: #e5e5ea; --band: rgba(142, 142, 147, 0.12);
   --good: #34c759; --warn: #eb6834; --accent: #007aff;
@@ -10,7 +10,7 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #a274e6;
     --bg: #000000; --card: #1c1c1e; --ink: #ffffff; --ink2: #98989e;
     --line: #38383a; --band: rgba(152, 152, 158, 0.16);
     --good: #30d158; --warn: #d95926; --accent: #0a84ff;

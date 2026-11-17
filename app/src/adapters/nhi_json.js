@@ -40,14 +40,26 @@ export function codeKeys(record) {
 }
 
 const sectionRows = value => value == null ? [] : Array.isArray(value) ? value : [value];
-const detailRows = value => value === "" ? [] : sectionRows(value);
+const blankOrNoData = v => v == null || (typeof v === "string" && ["", NO_DATA].includes(v.trim()));
 
+// 無資料佔位：[{"rN": "無資料"}]、XML 空節區 [{"rN": ""}]、
+// 或整個節區就是字串「無資料」／空字串（經 sectionRows 包成單元素清單）
 function isNoData(rows, sec) {
   if (!Array.isArray(rows) || rows.length !== 1) return false;
-  if (!rows[0] || typeof rows[0] !== "object" || Array.isArray(rows[0])) return false;
-  const keys = Object.keys(rows[0]);
+  const only = rows[0];
+  if (typeof only === "string") return blankOrNoData(only);
+  if (!only || typeof only !== "object" || Array.isArray(only)) return false;
+  const keys = Object.keys(only);
   return (keys.length === 1 && (keys[0] === sec || keys[0] === sec.toUpperCase())
-    && rows[0][keys[0]] === NO_DATA);
+    && blankOrNoData(only[keys[0]]));
+}
+
+// 巢狀明細：無資料佔位（含 XML 葉節點的空字串／「無資料」字串）視為無明細，
+// null 子項略過（不當成一筆紀錄，也不讓整筆父紀錄失敗）
+function detailRows(value, subKey) {
+  const rows = sectionRows(value);
+  if (isNoData(rows, subKey)) return [];
+  return rows.filter(r => r != null);
 }
 
 export const stripBom = (s) => s.charCodeAt(0) === 0xFEFF ? s.slice(1) : s;
@@ -211,10 +223,7 @@ export async function importNhiBdata(bdata, meta, driver, progress, opts = {}) {
         }
         const subKey = `${sec}_1`;
         if (["r11", "r12", "r13", "r14"].includes(sec) && Object.hasOwn(rec, subKey)) {
-          const children = detailRows(rec[subKey]);
-          if (!isNoData(children, subKey)) {
-            for (const child of children) noteUnknown(subKey, codeKeys(child));
-          }
+          for (const child of detailRows(rec[subKey], subKey)) noteUnknown(subKey, codeKeys(child));
         }
         return extra;
       };
@@ -242,6 +251,11 @@ export async function importNhiBdata(bdata, meta, driver, progress, opts = {}) {
               recType = "pharmacy_dispensing";
             }
             if (d === null) flags.push("missing_date");
+            // 子項先全部檢查完才寫入父事件：壞子項讓整筆失敗，不留下
+            // 「事件已入庫、醫囑只寫一半」且重匯時因指紋去重而永遠補不回的狀態
+            const subKey = `${sec}_1`;
+            const meds = detailRows(rec[subKey], subKey).map(codeKeys);
+            for (const med of meds) noteUnknown(subKey, med);
             const result = await store.insertFpRecord("encounters", rawRec, {
               profileId: pid, docId, section: sec, sourceIndex: i,
               qualityFlags: flags.join(","),
@@ -254,16 +268,12 @@ export async function importNhiBdata(bdata, meta, driver, progress, opts = {}) {
                 extra_json: Object.keys(extra).length
                   ? pyJsonDumps(extra, { sortKeys: false }) : null },
             });
-            const subKey = `${sec}_1`;
-            const nested = detailRows(rec[subKey]);
-            const meds = isNoData(nested, subKey) ? [] : nested;
             medExpected += meds.length;
             if (result === "inserted") {
               nOut += 1;
               const encId = store.lastInsertId;
               for (let j = 0; j < meds.length; j++) {
-                const med = codeKeys(meds[j]);
-                noteUnknown(subKey, med);
+                const med = meds[j];
                 const daysKey = sec === "r3" ? `${subKey}.6` : `${subKey}.4`;
                 await store.insertMedication({
                   profileId: pid, docId, encounterId: encId,
@@ -407,7 +417,7 @@ export async function importNhiBdata(bdata, meta, driver, progress, opts = {}) {
               await store.insertFpRecord("cancer_screenings", rawRec, {
                 profileId: pid, docId, section: "r11", sourceIndex: i,
                 columns: { category: rec["r11.1"] ?? null, item_name: rec["r11.2"] ?? null,
-                  detail_json: pyJsonDumps(detailRows(rec.r11_1).map(codeKeys), { sortKeys: false }) },
+                  detail_json: pyJsonDumps(detailRows(rec.r11_1, "r11_1").map(codeKeys), { sortKeys: false }) },
               });
             });
           }
@@ -418,8 +428,8 @@ export async function importNhiBdata(bdata, meta, driver, progress, opts = {}) {
       // --- 其餘節區與未知節區 ---
       for (const sec of ["r4", "r5", "r12", "r13", "r14"]) {
         const rows = sectionRows(bdata[sec]);
-        if (isNoData(rows, sec)) sections[sec] = { status: "no_data", records: 0 };
-        else if (rows.length) {
+        if (!rows.length || isNoData(rows, sec)) sections[sec] = { status: "no_data", records: 0 };
+        else {
           retained[sec] = bdata[sec];
           for (let i = 0; i < rows.length; i++) {
             await guard(sec, i, async () => noteUnknown(sec, codeKeys(rows[i])));
