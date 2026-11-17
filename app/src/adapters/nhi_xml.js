@@ -44,11 +44,18 @@ function parsePairs(text, pos, endPos) {
 }
 
 // pairs → JSON 版 bdata 形狀
+// 同一標籤同時出現文字佔位（<r1_1>無資料</r1_1>、空標籤）與巢狀子項時，
+// 佔位不得覆蓋已收集的子項，子項也要能取代先出現的佔位
+const isPlaceholderText = v => typeof v === "string" && ["", "無資料"].includes(v.trim());
 function shapeRecord(children) {
   const rec = {};
   for (const [tag, val] of children) {
-    if (Array.isArray(val)) (rec[tag] = rec[tag] || []).push(shapeRecord(val));
-    else rec[tag] = val;
+    if (Array.isArray(val)) {
+      if (!Array.isArray(rec[tag])) rec[tag] = [];
+      rec[tag].push(shapeRecord(val));
+    } else if (!(Array.isArray(rec[tag]) && isPlaceholderText(val))) {
+      rec[tag] = val;
+    }
   }
   return rec;
 }

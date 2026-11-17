@@ -52,12 +52,21 @@ def section_rows(value):
 
 
 def detail_rows(value, sub_key):
-    """巢狀明細：無資料佔位（含 XML 葉節點的空字串／「無資料」字串）視為無明細，
-    null 子項略過（不當成一筆紀錄，也不讓整筆父紀錄失敗）。"""
+    """巢狀明細 → [(原始位置, 子項)]：無資料佔位（含 XML 葉節點的空字串／
+    「無資料」字串）視為無明細；null 與空物件子項略過，但保留原始位置供溯源。"""
     rows = section_rows(value)
     if is_no_data(rows, sub_key):
         return []
-    return [r for r in rows if r is not None]
+    return [(j, r) for j, r in enumerate(rows) if r is not None and r != {}]
+
+
+def scalar_child(child):
+    """醫囑子項的欄位值 MUST 是純量；巢狀值會在寫入時失敗，要在父事件寫入前擋下。"""
+    child = code_keys(child)
+    for k, v in child.items():
+        if isinstance(v, (dict, list)):
+            raise ValueError(f"{k} 不是單一值")
+    return child
 
 
 def norm_date(s):
@@ -72,6 +81,8 @@ def norm_date(s):
 
 
 def to_num(s):
+    if isinstance(s, bool):  # bool 是 int 子類；與 JS 一致視為非數值
+        return None
     if s is None or isinstance(s, (int, float)):
         return s
     try:
@@ -86,13 +97,19 @@ def _blank_or_no_data(v):
 
 
 def is_no_data(rows, sec):
-    """無資料佔位：[{"rN": "無資料"}]、XML 空節區 [{"rN": ""}]、
+    """無資料佔位：空清單、[{"rN": "無資料"}]、XML 空節區 [{"rN": ""}]、空物件，
     或整個節區就是字串「無資料」／空字串（經 section_rows 包成單元素清單）。"""
-    if not isinstance(rows, list) or len(rows) != 1:
+    if not isinstance(rows, list):
+        return False
+    if not rows:
+        return True
+    if len(rows) != 1:
         return False
     only = rows[0]
     if isinstance(only, str):
         return _blank_or_no_data(only)
+    if only == {}:
+        return True
     return (isinstance(only, dict)
             and list(only.keys()) in ([sec], [sec.upper()])
             and _blank_or_no_data(list(only.values())[0]))
@@ -196,7 +213,7 @@ class NhiJsonAdapter:
                 unknown_fields[sec][k] = unknown_fields[sec].get(k, 0) + 1
             sub_key = f"{sec}_1"
             if sec in ("r11", "r12", "r13", "r14") and sub_key in rec:
-                for child in detail_rows(rec[sub_key], sub_key):
+                for _, child in detail_rows(rec[sub_key], sub_key):
                     note_unknown(sub_key, code_keys(child))
             return extra
 
@@ -228,8 +245,8 @@ class NhiJsonAdapter:
                 # 子項先全部檢查完才寫入父事件：壞子項讓整筆失敗，不留下
                 # 「事件已入庫、醫囑只寫一半」且重匯時因指紋去重而永遠補不回的狀態
                 sub_key = f"{sec}_1"
-                meds = [code_keys(m) for m in detail_rows(rec.get(sub_key), sub_key)]
-                for med in meds:
+                meds = [(j, scalar_child(m)) for j, m in detail_rows(rec.get(sub_key), sub_key)]
+                for _, med in meds:
                     note_unknown(sub_key, med)
                 result = store.insert_fp_record(
                     "encounters", raw_rec, profile_id=pid, doc_id=doc_id, section=sec,
@@ -246,7 +263,7 @@ class NhiJsonAdapter:
                 if result == "inserted":
                     n_out += 1
                     enc_id = store._last_insert_id
-                    for j, med in enumerate(meds):
+                    for j, med in meds:
                         days_key = f"{sub_key}.6" if sec == "r3" else f"{sub_key}.4"
                         store.insert_medication(
                             profile_id=pid, doc_id=doc_id, encounter_id=enc_id,
@@ -372,7 +389,7 @@ class NhiJsonAdapter:
                     section="r11", source_index=i,
                     columns={"category": rec.get("r11.1"), "item_name": rec.get("r11.2"),
                              "detail_json": json.dumps(
-                                 [code_keys(child) for child in detail_rows(rec.get("r11_1"), "r11_1")],
+                                 [code_keys(child) for _, child in detail_rows(rec.get("r11_1"), "r11_1")],
                                  ensure_ascii=False)})
               guard("r11", i, _one)
             sections["r11"] = {"status": "parsed", "records": len(rows)}
@@ -380,7 +397,7 @@ class NhiJsonAdapter:
         # --- 其餘節區與未知節區 ---
         for sec in ["r4", "r5", "r12", "r13", "r14"]:
             rows = section_rows(bdata.get(sec))
-            if not rows or is_no_data(rows, sec):
+            if is_no_data(rows, sec):
                 sections[sec] = {"status": "no_data", "records": 0}
             else:
                 retained[sec] = bdata[sec]

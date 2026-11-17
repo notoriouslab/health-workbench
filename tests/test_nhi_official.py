@@ -102,14 +102,18 @@ def test_placeholders_and_bad_children(tmp_path, monkeypatch):
     s = Store(db)
     q = lambda sql: s.con.execute(sql).fetchall()
     # null 子項略過、字串「無資料」明細為零筆；壞子項（數字）的事件整筆不入庫
-    assert [r[0] for r in q("SELECT date FROM encounters ORDER BY date")] == ['2023-05-01', '2023-05-02']
-    assert [r[0] for r in q("SELECT order_code FROM medications")] == ['SYN101']
+    # 子項欄位為陣列（05-03 數字子項、05-04 陣列值）整筆不入庫；空物件明細不產生假用藥
+    assert [r[0] for r in q("SELECT date FROM encounters ORDER BY date")] == [
+        '2023-05-01', '2023-05-02', '2023-05-05', '2023-05-06', '2023-05-07']
+    # source_index 保留原始位置（null 之後的子項仍是 1）；布林數量視為非數值
+    assert [tuple(r) for r in q("SELECT order_code, source_index, total_qty FROM medications ORDER BY order_code")] == [
+        ('SYN101', 0, None), ('SYN106', 1, None), ('SYN107', 0, None)]
     assert q("SELECT COUNT(*) FROM encounters WHERE section='r2'")[0][0] == 0
     assert q("SELECT COUNT(*) FROM lab_results")[0][0] == 0
     assert [json.loads(r[0]) for r in q("SELECT detail_json FROM cancer_screenings ORDER BY category")] == [[], []]
     stats = json.loads(q('SELECT import_stats FROM source_documents')[0][0])
     s.close()
-    assert set(stats['nhi_failed_records']) == {'r1'} and set(stats['nhi_failed_records']['r1']) == {'2'}
+    assert set(stats['nhi_failed_records']) == {'r1'} and set(stats['nhi_failed_records']['r1']) == {'2', '3'}
     assert 'r4' not in stats['nhi_retained'] and 'r12' not in stats['nhi_retained']
     status = {k: v['status'] for k, v in reports[0]['sections'].items()}
-    assert [status[k] for k in ('r2', 'r4', 'r7', 'r12')] == ['no_data'] * 4
+    assert [status[k] for k in ('r2', 'r3', 'r4', 'r5', 'r7', 'r12')] == ['no_data'] * 6
