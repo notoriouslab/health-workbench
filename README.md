@@ -357,7 +357,7 @@ App 的 SQLite 資料庫可供外部工具以唯讀方式（`mode=ro`）查詢�
   `bin/hwb import <檔案>`、`bin/hwb rebuild`、`bin/hwb status`、
   `bin/hwb knowledge update`（更新藥品品項快取，唯一主動連網的命令）、
   `bin/hwb knowledge normalize`（重算檢驗名稱對照，冪等、不連網）。
-- **測試**：`cd app && npm test`（446 項，含與 Python 的逐位元組
+- **測試**：`cd app && npm test`（459 項，含與 Python 的逐位元組
   差分對帳、匯入與救援操作的非破壞性紅隊矩陣、檢視器全分頁渲染守衛）；
   `python3 -m pytest tests/`；端到端 `scripts/e2e_idempotency.sh`。
 - **CI**：`.github/workflows/app-build.yml`（測試＋守衛 → 雙平台建置）；
